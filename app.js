@@ -1,0 +1,1462 @@
+"use strict";
+var __async = (__this, __arguments, generator) => {
+  return new Promise((resolve, reject) => {
+    var fulfilled = (value) => {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var rejected = (value) => {
+      try {
+        step(generator.throw(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+    step((generator = generator.apply(__this, __arguments)).next());
+  });
+};
+var CFG = window.FARJA_CONFIG || {};
+var QS = new URLSearchParams(location.search);
+var DEMO = QS.has("demo");
+var VERSION = "1.0.0";
+const store = {
+  get(k, d) {
+    try {
+      const v = localStorage.getItem("farja." + k);
+      return v == null ? d : JSON.parse(v);
+    } catch (e) {
+      return d;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem("farja." + k, JSON.stringify(v));
+    } catch (e) {
+    }
+  },
+  del(k) {
+    try {
+      localStorage.removeItem("farja." + k);
+    } catch (e) {
+    }
+  }
+};
+const settings = Object.assign({ hideShorts: false, autoNext: true, dailyLimit: 0 }, store.get("settings", {}));
+const saveSettings = () => store.set("settings", settings);
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const pad2 = (n) => (n < 10 ? "0" : "") + n;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return h ? h + ":" + pad2(m) + ":" + pad2(s) : m + ":" + pad2(s);
+}
+function parseISODur(iso) {
+  const m = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso || "");
+  if (!m) return 0;
+  return (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0);
+}
+function fmtCount(n) {
+  n = +n || 0;
+  if (n >= 1e6) return Math.round(n / 1e5) / 10 + " مليون";
+  if (n >= 1e3) return Math.round(n / 100) / 10 + " ألف";
+  return String(n);
+}
+function hash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h << 5) + h + s.charCodeAt(i) | 0;
+  return "h" + (h >>> 0).toString(36);
+}
+function pickThumb(t, order) {
+  t = t || {};
+  for (const k of order) if (t[k] && t[k].url) return t[k].url;
+  return "";
+}
+let toastT = null;
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("on");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove("on"), 2600);
+}
+class ApiError extends Error {
+  constructor(kind, msg) {
+    super(msg || kind);
+    this.kind = kind;
+  }
+}
+function errText(e) {
+  switch (e && e.kind) {
+    case "nokey":
+      return "مفتاح YouTube API مش مضبوط. لازم ينضاف بملف config.js.";
+    case "quota":
+      return "خلصت حصة اليوم من YouTube. جرّبوا بكرة.";
+    case "key":
+      return "في مشكلة بمفتاح YouTube API. تأكد من إعداداته بـ Google Cloud.";
+    case "network":
+      return "في مشكلة بالإنترنت. تأكد إن التلفزيون متصل.";
+    case "notfound":
+      return "ما لقيت هالقناة. تأكد من الاسم أو الرابط.";
+    default:
+      return "صار خطأ غير متوقع. جرّب مرة ثانية.";
+  }
+}
+function yt(path, params) {
+  return __async(this, null, function* () {
+    if (!CFG.apiKey) throw new ApiError("nokey");
+    const u = new URL("https://www.googleapis.com/youtube/v3/" + path);
+    Object.keys(params).forEach((k) => {
+      if (params[k] != null && params[k] !== "") u.searchParams.set(k, params[k]);
+    });
+    u.searchParams.set("key", CFG.apiKey);
+    let r;
+    try {
+      r = yield fetch(u.toString());
+    } catch (e) {
+      throw new ApiError("network", e.message);
+    }
+    let j = null;
+    try {
+      j = yield r.json();
+    } catch (e) {
+    }
+    if (!r.ok) {
+      const err = j && j.error;
+      const reason = err && err.errors && err.errors[0] && err.errors[0].reason;
+      if (reason === "quotaExceeded" || reason === "dailyLimitExceeded" || reason === "rateLimitExceeded") throw new ApiError("quota", reason);
+      if (r.status === 404 || reason === "playlistNotFound" || reason === "channelNotFound") throw new ApiError("notfound", reason);
+      if (r.status === 400 || r.status === 401 || r.status === 403) throw new ApiError("key", err && err.message || reason);
+      throw new ApiError("http", "HTTP " + r.status);
+    }
+    return j;
+  });
+}
+function parseChannelInput(raw) {
+  const s = String(raw || "").trim();
+  let m;
+  if (m = /(UC[\w-]{22})(?![\w-])/.exec(s)) return { id: m[1] };
+  if (m = /youtube\.com\/user\/([^\/?#\s]+)/i.exec(s)) return { username: decodeURIComponent(m[1]) };
+  if (m = /youtube\.com\/c\/([^\/?#\s]+)/i.exec(s)) return { search: decodeURIComponent(m[1]) };
+  if (m = /@([^\/?#\s]+)/.exec(s)) return { handle: "@" + decodeURIComponent(m[1]) };
+  if (/^[\w.\-]{3,30}$/.test(s)) return { handle: "@" + s, fallbackSearch: s };
+  return { search: s };
+}
+function toChannel(item) {
+  const sn = item.snippet || {};
+  const cd = item.contentDetails || {};
+  const st = item.statistics || {};
+  const rel = cd.relatedPlaylists || {};
+  return {
+    id: item.id,
+    title: sn.title || "",
+    thumb: pickThumb(sn.thumbnails, ["medium", "high", "default"]),
+    uploads: rel.uploads || "UU" + String(item.id).slice(2),
+    subs: st.hiddenSubscriberCount ? null : st.subscriberCount,
+    videoCount: st.videoCount
+  };
+}
+const realApi = {
+  resolve(input) {
+    return __async(this, null, function* () {
+      const p = parseChannelInput(input);
+      const part = "snippet,contentDetails,statistics";
+      if (!p.search) {
+        const params = { part };
+        if (p.id) params.id = p.id;
+        else if (p.handle) params.forHandle = p.handle;
+        else if (p.username) params.forUsername = p.username;
+        const j = yield yt("channels", params);
+        if (j.items && j.items.length) return toChannel(j.items[0]);
+        if (!p.fallbackSearch) return null;
+        p.search = p.fallbackSearch;
+      }
+      const sj = yield yt("search", { part: "snippet", type: "channel", q: p.search, maxResults: 1 });
+      const hit = sj.items && sj.items[0];
+      const id = hit && (hit.snippet && hit.snippet.channelId || hit.id && hit.id.channelId);
+      if (!id) return null;
+      const j2 = yield yt("channels", { part, id });
+      return j2.items && j2.items.length ? toChannel(j2.items[0]) : null;
+    });
+  },
+  // One page of a channel's uploads, with durations and embeddability.
+  videos(ch, pageToken) {
+    return __async(this, null, function* () {
+      const pl = yield yt("playlistItems", { part: "contentDetails", playlistId: ch.uploads, maxResults: 50, pageToken });
+      const ids = (pl.items || []).map((i) => i.contentDetails && i.contentDetails.videoId).filter(Boolean);
+      if (!ids.length) return { videos: [], next: pl.nextPageToken || null };
+      const vj = yield yt("videos", { part: "snippet,contentDetails,status", id: ids.join(","), maxResults: 50 });
+      const byId = {};
+      (vj.items || []).forEach((v) => {
+        byId[v.id] = v;
+      });
+      const videos = [];
+      ids.forEach((id) => {
+        const v = byId[id];
+        if (!v) return;
+        const st = v.status || {};
+        const sn = v.snippet || {};
+        if (st.embeddable === false) return;
+        if (st.privacyStatus && st.privacyStatus !== "public" && st.privacyStatus !== "unlisted") return;
+        if (sn.liveBroadcastContent && sn.liveBroadcastContent !== "none") return;
+        videos.push({
+          id,
+          title: sn.title || "",
+          thumb: pickThumb(sn.thumbnails, ["high", "medium", "standard", "default"]),
+          dur: parseISODur(v.contentDetails && v.contentDetails.duration)
+        });
+      });
+      return { videos, next: pl.nextPageToken || null };
+    });
+  }
+};
+const DEMO_CH = [
+  ["حكايات قبل النوم", 262],
+  ["أناشيد الحروف", 32],
+  ["عالم الحيوانات", 150],
+  ["تجارب علمية صغيرة", 196],
+  ["رسم وتلوين", 340],
+  ["ألغاز وأرقام", 12]
+];
+const DEMO_TITLES = [
+  "الأرنب والسلحفاة — حكاية كاملة",
+  "نشيد الحروف من الألف للياء",
+  "ليش السما زرقا؟",
+  "كيف تنام الزرافة؟",
+  "تجربة البركان بالخل والكربونات",
+  "نرسم قطة بخطوات سهلة",
+  "عدّ للعشرة مع البطة",
+  "رحلة إلى قاع المحيط",
+  "الفصول الأربعة",
+  "أصوات الحيوانات بالمزرعة",
+  "قصة النملة المجتهدة",
+  "ألوان قوس قزح",
+  "نتعلم الأشكال الهندسية",
+  "كيف تطير الطيارة؟",
+  "أغنية تنظيف الأسنان",
+  "الفيل الصغير يضيع"
+];
+function svgData(svg) {
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+function demoAvatar(hue, letter) {
+  return svgData('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl('.concat(hue, ',80%,66%)"/><stop offset="1" stop-color="hsl(').concat((hue + 40) % 360, ',70%,48%)"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="150" cy="44" r="30" fill="rgba(255,255,255,.25)"/><text x="100" y="128" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="92" fill="#fff">').concat(letter, "</text></svg>"));
+}
+function demoThumb(hue, n) {
+  const h2 = (hue + 50 + n * 17) % 360;
+  return svgData('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl('.concat(hue, ',75%,62%)"/><stop offset="1" stop-color="hsl(').concat(h2, ',70%,42%)"/></linearGradient></defs><rect width="480" height="270" fill="url(#g)"/><circle cx="').concat(90 + n * 53 % 300, '" cy="').concat(70 + n * 31 % 120, '" r="').concat(40 + n * 7 % 50, '" fill="rgba(255,255,255,.22)"/><rect x="').concat(280 - n * 29 % 200, '" y="150" width="160" height="90" rx="24" fill="rgba(0,0,0,.18)"/></svg>'));
+}
+const demoApi = {
+  resolve(input) {
+    return __async(this, null, function* () {
+      yield new Promise((r) => setTimeout(r, 250));
+      const i = DEMO_CH.findIndex((c) => c[0] === input || "UCdemo" + DEMO_CH.indexOf(c) === input);
+      if (i >= 0) {
+        const [title, hue2] = DEMO_CH[i];
+        return { id: "UCdemo" + i, title, thumb: demoAvatar(hue2, title.charAt(0)), uploads: "UUdemo" + i, hue: hue2, subs: 12400 * (i + 1) };
+      }
+      const s = String(input).replace(/^@/, "").trim();
+      if (!s || /^x+$/i.test(s)) return null;
+      const hue = s.length * 47 % 360;
+      return { id: "UCdemo-" + s, title: s, thumb: demoAvatar(hue, s.charAt(0).toUpperCase()), uploads: "UUdemo-" + s, hue, subs: 3200 };
+    });
+  },
+  videos(ch, pageToken) {
+    return __async(this, null, function* () {
+      yield new Promise((r) => setTimeout(r, 450));
+      const page = +(pageToken || 0);
+      const hue = ch.hue || 200;
+      const videos = [];
+      for (let k = 0; k < 24; k++) {
+        const n = page * 24 + k;
+        videos.push({
+          id: ch.id + "-v" + n,
+          title: DEMO_TITLES[n % DEMO_TITLES.length] + (n >= DEMO_TITLES.length ? " (" + (Math.floor(n / DEMO_TITLES.length) + 1) + ")" : ""),
+          thumb: demoThumb(hue, n),
+          dur: n % 5 === 3 ? 45 : 25 + n * 97 % 600
+        });
+      }
+      return { videos, next: page < 2 ? String(page + 1) : null };
+    });
+  }
+};
+const api = DEMO ? demoApi : realApi;
+let channels = [];
+let channelsLoading = true;
+let channelsError = null;
+const resolved = store.get("resolved", {});
+const RESOLVE_TTL = 7 * 24 * 3600 * 1e3;
+function tvChannels() {
+  return store.get("channels", []);
+}
+function removedIds() {
+  return store.get("removed", []);
+}
+function fetchRemoteList() {
+  return __async(this, null, function* () {
+    if (DEMO) return DEMO_CH.map((c) => c[0]);
+    try {
+      const r = yield fetch("channels.json?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = yield r.json();
+      const list = (Array.isArray(j) ? j : j.channels || []).map((x) => String(typeof x === "object" && x ? x.id || x.handle || x.url || "" : x).trim()).filter(Boolean);
+      store.set("remoteCopy", list);
+      return list;
+    } catch (e) {
+      return store.get("remoteCopy", []);
+    }
+  });
+}
+function loadChannels() {
+  return __async(this, null, function* () {
+    channelsLoading = true;
+    channelsError = null;
+    const remote = yield fetchRemoteList();
+    const removed = removedIds();
+    const out = [];
+    const seen = {};
+    for (const input of remote) {
+      const cached = resolved[input];
+      let ch = cached && cached.ch;
+      if (!ch || Date.now() - cached.at > RESOLVE_TTL) {
+        try {
+          const fresh = yield api.resolve(input);
+          if (fresh) {
+            ch = fresh;
+            resolved[input] = { ch: fresh, at: Date.now() };
+          }
+        } catch (e) {
+          if (!ch) channelsError = e;
+        }
+      }
+      if (!ch || seen[ch.id] || removed.indexOf(ch.id) >= 0) continue;
+      seen[ch.id] = 1;
+      out.push(Object.assign({}, ch, { source: "file" }));
+    }
+    store.set("resolved", resolved);
+    tvChannels().forEach((ch) => {
+      if (seen[ch.id]) return;
+      seen[ch.id] = 1;
+      out.push(Object.assign({}, ch, { source: "tv" }));
+    });
+    channels = out;
+    channelsLoading = false;
+  });
+}
+function rebuildChannelsLocal() {
+  const removed = removedIds();
+  const out = [];
+  const seen = {};
+  store.get("remoteCopy", DEMO ? DEMO_CH.map((c) => c[0]) : []).forEach((input) => {
+    const c = resolved[input] && resolved[input].ch;
+    if (!c || seen[c.id] || removed.indexOf(c.id) >= 0) return;
+    seen[c.id] = 1;
+    out.push(Object.assign({}, c, { source: "file" }));
+  });
+  tvChannels().forEach((c) => {
+    if (seen[c.id]) return;
+    seen[c.id] = 1;
+    out.push(Object.assign({}, c, { source: "tv" }));
+  });
+  channels = out;
+}
+const VIDEO_TTL = 30 * 60 * 1e3;
+const vMem = {};
+function getCached(chId) {
+  const c = vMem[chId] || store.get("vc." + chId, null);
+  return c && Date.now() - c.at < VIDEO_TTL ? c : null;
+}
+function putCached(chId, data) {
+  vMem[chId] = data;
+  store.set("vc." + chId, { at: data.at, videos: data.videos.slice(0, 50), next: data.videos.length > 50 ? null : data.next });
+}
+const visible = (list) => list.filter((v) => !(settings.hideShorts && v.dur > 0 && v.dur <= 60));
+const LIMITS = [0, 15, 30, 45, 60, 90, 120, 180];
+function todayStr() {
+  const d = /* @__PURE__ */ new Date();
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+}
+let usage = store.get("usage", null);
+function getUsage() {
+  if (!usage || usage.date !== todayStr()) {
+    usage = { date: todayStr(), sec: 0, bonus: 0, warned: 0 };
+    store.set("usage", usage);
+  }
+  return usage;
+}
+function saveUsage() {
+  store.set("usage", usage);
+}
+function limitOn() {
+  return settings.dailyLimit > 0;
+}
+function remainingSec() {
+  if (!limitOn()) return Infinity;
+  const u = getUsage();
+  return Math.max(0, (settings.dailyLimit + u.bonus) * 60 - u.sec);
+}
+const fmtMin = (s) => Math.ceil(s / 60) + " دقيقة";
+let usageSaveAt = 0;
+function addWatch(sec) {
+  if (!limitOn()) return;
+  const u = getUsage();
+  u.sec += sec;
+  if (Date.now() - usageSaveAt > 5e3) {
+    usageSaveAt = Date.now();
+    saveUsage();
+  }
+  const left = remainingSec();
+  if (left <= 0) {
+    saveUsage();
+    timeUp();
+    return;
+  }
+  if (left <= 60 && u.warned < 2) {
+    u.warned = 2;
+    saveUsage();
+    toast("باقي دقيقة وحدة!");
+  } else if (left <= 300 && u.warned < 1) {
+    u.warned = 1;
+    saveUsage();
+    toast("باقي 5 دقايق على وقت الفرجة");
+  }
+}
+function timeUp() {
+  clearEnd();
+  hideErr();
+  clearInterval(tickT);
+  clearInterval(guardT);
+  try {
+    if (player) {
+      player.pauseVideo();
+      player.stopVideo();
+    }
+  } catch (e) {
+  }
+  curVid = null;
+  hideOSD();
+  spinner(false);
+  show("timeup");
+  focusEl($('[data-act="tu-home"]'));
+}
+function renderTimeChip() {
+  const chip = $("#time-chip");
+  if (!limitOn()) {
+    chip.classList.add("hidden");
+    return;
+  }
+  const left = remainingSec();
+  chip.textContent = left > 0 ? "باقي " + fmtMin(left) + " فرجة اليوم" : "خلص وقت الفرجة لليوم";
+  chip.classList.toggle("low", left < 600);
+  chip.classList.remove("hidden");
+}
+let current = null;
+const lastFocus = {};
+function show(name) {
+  $$(".screen").forEach((s) => s.classList.toggle("active", s.id === name));
+  current = name;
+}
+function isVisible(el) {
+  return !!(el.offsetWidth || el.offsetHeight);
+}
+function focusables() {
+  const scr = document.getElementById(current);
+  return scr ? $$(".f", scr).filter((el) => !el.disabled && isVisible(el)) : [];
+}
+function focusEl(el) {
+  if (!el) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch (e) {
+    el.focus();
+  }
+  ensureVisible(el);
+}
+function ensureVisible(el) {
+  const sc = el.closest(".scroll");
+  if (!sc) return;
+  const er = el.getBoundingClientRect();
+  const sr = sc.getBoundingClientRect();
+  const pad = sr.height * 0.14;
+  const grid = el.closest(".ch-grid, .v-grid");
+  if (grid && grid.firstElementChild && Math.abs(grid.firstElementChild.getBoundingClientRect().top - er.top) < 5) {
+    sc.scrollTop = 0;
+    return;
+  }
+  if (er.top < sr.top + pad) sc.scrollTop -= sr.top + pad - er.top;
+  else if (er.bottom > sr.bottom - pad) sc.scrollTop += er.bottom - (sr.bottom - pad);
+}
+function moveFocus(dir) {
+  const cands = focusables();
+  if (!cands.length) return;
+  const cur = document.activeElement;
+  if (!cur || cands.indexOf(cur) < 0) {
+    focusEl(cands[0]);
+    return;
+  }
+  const a = cur.getBoundingClientRect();
+  const acx = a.left + a.width / 2, acy = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  cands.forEach((el) => {
+    if (el === cur) return;
+    const b = el.getBoundingClientRect();
+    const bcx = b.left + b.width / 2, bcy = b.top + b.height / 2;
+    let primary, orth;
+    if (dir === "left" || dir === "right") {
+      const tx = a.width * 0.3;
+      if (dir === "left" ? bcx >= acx - tx : bcx <= acx + tx) return;
+      primary = Math.max(0, dir === "left" ? a.left - b.right : b.left - a.right);
+      const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      orth = overlap > 0 ? 0 : Math.abs(bcy - acy);
+      if (orth > 0) primary += Math.abs(bcx - acx) * 0.2;
+      orth *= 4;
+    } else {
+      const ty = a.height * 0.3;
+      if (dir === "up" ? bcy >= acy - ty : bcy <= acy + ty) return;
+      primary = Math.max(0, dir === "up" ? a.top - b.bottom : b.top - a.bottom);
+      orth = Math.abs(bcx - acx) * 1.5;
+    }
+    const score = primary + orth;
+    if (score < bestScore) {
+      bestScore = score;
+      best = el;
+    }
+  });
+  if (best) focusEl(best);
+}
+const EMPTY_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="14" width="56" height="42" rx="12" fill="var(--card2)"/><path d="M4 26 Q18 24 22 14 L4 14Z" fill="var(--coral)" opacity=".8"/><path d="M60 26 Q46 24 42 14 L60 14Z" fill="var(--coral)" opacity=".8"/><circle cx="25" cy="36" r="3" fill="var(--ink)"/><circle cx="39" cy="36" r="3" fill="var(--ink)"/><path d="M26 46 Q32 42 38 46" stroke="var(--ink)" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>';
+function renderHome() {
+  const hr = (/* @__PURE__ */ new Date()).getHours();
+  renderTimeChip();
+  $("#greet").textContent = hr < 12 ? "صباح الخير!" : hr < 17 ? "نهاركم سعيد!" : "مساء الخير!";
+  const notice = $("#notice");
+  if (!DEMO && !CFG.apiKey) {
+    notice.innerHTML = 'التطبيق محتاج مفتاح <b dir="ltr">YouTube Data API</b> حتى يجيب الفيديوهات. ضيفه بملف <b dir="ltr">config.js</b> (الخطوات بملف README).';
+    notice.classList.remove("hidden");
+  } else if (channelsError && !channels.length) {
+    notice.textContent = errText(channelsError);
+    notice.classList.remove("hidden");
+  } else notice.classList.add("hidden");
+  const grid = $("#ch-grid");
+  if (channelsLoading) {
+    let s = "";
+    for (let i = 0; i < 5; i++) s += '<div class="ch skel"><span class="av sk"></span><span class="nm sk"></span></div>';
+    grid.innerHTML = s;
+    return;
+  }
+  if (!channels.length) {
+    grid.innerHTML = '<div class="empty">' + EMPTY_SVG + '<p>لسا ما في قنوات هون.</p><p class="muted">خلّي ماما أو بابا يضيفوا قنوات من زر «الأهل».</p></div>';
+    return;
+  }
+  grid.innerHTML = channels.map(
+    (c) => '<button class="f ch" data-id="'.concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt=""></span><span class="nm">').concat(esc(c.title), "</span></button>")
+  ).join("");
+}
+function focusHome() {
+  const want = lastFocus.home && $('.ch[data-id="' + lastFocus.home + '"]');
+  focusEl(want || $("#ch-grid .ch") || $("#parent-btn"));
+}
+let chs = null;
+let chSeq = 0;
+function openChannel(id) {
+  const ch = channels.find((c) => c.id === id);
+  if (!ch) return;
+  lastFocus.home = id;
+  const seq = ++chSeq;
+  chs = { ch, all: [], next: null, loading: true, seq, error: null };
+  $("#ch-av").src = ch.thumb || "";
+  $("#ch-title").textContent = ch.title;
+  $("#ch-sub").textContent = "";
+  $("#channel-scroll").scrollTop = 0;
+  show("channel");
+  const cached = getCached(ch.id);
+  if (cached) {
+    chs.all = cached.videos.slice();
+    chs.next = cached.next;
+    chs.loading = false;
+    renderVideos(true);
+    focusFirstVideo();
+    if (visible(chs.all).length < 12 && chs.next) loadMore();
+    return;
+  }
+  renderVideos(true);
+  focusEl($("#channel .back-btn"));
+  fetchPage(seq, null, true);
+}
+function fetchPage(seq, token, first) {
+  return __async(this, null, function* () {
+    chs.loading = true;
+    $("#v-more").classList.toggle("hidden", first);
+    try {
+      let tries = 0;
+      let res;
+      do {
+        res = yield api.videos(chs.ch, token);
+        if (seq !== chSeq) return;
+        chs.all = chs.all.concat(res.videos);
+        chs.next = res.next;
+        token = res.next;
+        tries++;
+      } while (token && tries < 3 && visible(chs.all).length < (first ? 12 : 8));
+      chs.error = null;
+      putCached(chs.ch.id, { at: Date.now(), videos: chs.all, next: chs.next });
+    } catch (e) {
+      if (seq !== chSeq) return;
+      chs.error = e;
+    }
+    chs.loading = false;
+    $("#v-more").classList.add("hidden");
+    const hadFocus = current === "channel" && document.activeElement && document.activeElement.classList.contains("back-btn");
+    renderVideos(first);
+    if (first && current === "channel" && hadFocus) focusFirstVideo();
+  });
+}
+function loadMore() {
+  if (!chs || chs.loading || !chs.next) return;
+  fetchPage(chs.seq, chs.next, false);
+}
+function renderVideos(full) {
+  const grid = $("#v-grid");
+  const list = visible(chs.all);
+  if (chs.loading && !chs.all.length) {
+    let s = "";
+    for (let i = 0; i < 8; i++) s += '<div class="v skel"><span class="th sk"></span><span class="tt sk"></span></div>';
+    grid.innerHTML = s;
+    return;
+  }
+  if (chs.error && !list.length) {
+    grid.innerHTML = '<div class="err-box"><p>' + esc(errText(chs.error)) + '</p><button class="f btn primary" data-act="retry">جرّب مرة ثانية</button></div>';
+    if (current === "channel") focusEl($('[data-act="retry"]'));
+    return;
+  }
+  if (!list.length) {
+    grid.innerHTML = '<div class="err-box"><p>ما في فيديوهات هون.</p></div>';
+    return;
+  }
+  $("#ch-sub").textContent = list.length + (chs.next ? "+" : "") + " فيديو";
+  const html = (i) => {
+    const v = list[i];
+    return '<button class="f v" data-i="'.concat(i, '" data-vid="').concat(esc(v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "", '</span><span class="tt">').concat(esc(v.title), "</span></button>");
+  };
+  const have = full ? 0 : $$(".v[data-vid]", grid).length;
+  if (full || have === 0 || have > list.length) {
+    let s = "";
+    for (let i = 0; i < list.length; i++) s += html(i);
+    grid.innerHTML = s;
+  } else {
+    let s = "";
+    for (let i = have; i < list.length; i++) s += html(i);
+    grid.insertAdjacentHTML("beforeend", s);
+  }
+}
+function focusFirstVideo() {
+  focusEl($("#v-grid .v") || $("#channel .back-btn"));
+}
+let player = null;
+let playerReady = null;
+let ytApiReady = null;
+let playList = [];
+let playIdx = -1;
+let curVid = null;
+let pState = -1;
+let osdT = null, flashT = null, seekT = null, tickT = null, guardT = null, endT = null, errT = null;
+let endCount = 0;
+function loadYTApi() {
+  if (ytApiReady) return ytApiReady;
+  ytApiReady = new Promise((resolve, reject) => {
+    if (window.YT && window.YT.Player) {
+      resolve();
+      return;
+    }
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (prev) prev();
+      resolve();
+    };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    s.onerror = () => {
+      ytApiReady = null;
+      reject(new ApiError("network"));
+    };
+    document.head.appendChild(s);
+  });
+  return ytApiReady;
+}
+function ensurePlayer() {
+  if (playerReady) return playerReady;
+  if (DEMO) {
+    player = new FakePlayer($("#yt"));
+    playerReady = Promise.resolve(player);
+    return playerReady;
+  }
+  playerReady = loadYTApi().then(() => new Promise((resolve) => {
+    player = new window.YT.Player("yt", {
+      width: "100%",
+      height: "100%",
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        rel: 0,
+        iv_load_policy: 3,
+        playsinline: 1,
+        cc_load_policy: 0,
+        hl: "ar",
+        origin: location.origin,
+        widget_referrer: location.href
+      },
+      events: {
+        onReady: () => {
+          try {
+            const f = player.getIframe();
+            f.setAttribute("tabindex", "-1");
+          } catch (e) {
+          }
+          resolve(player);
+        },
+        onStateChange: (e) => onState(e.data),
+        onError: (e) => onPlayerError(e.data)
+      }
+    });
+  }));
+  playerReady.catch(() => {
+    playerReady = null;
+  });
+  return playerReady;
+}
+class FakePlayer {
+  // demo only: behaves like the bits of YT.Player we use
+  constructor(el) {
+    el.innerHTML = '<div class="fake"><div class="fake-in"></div></div>';
+    this.box = el.firstChild;
+    this.t = 0;
+    this.d = 0;
+    this.st = -1;
+    this.timer = null;
+    this.vid = null;
+  }
+  loadVideoById(id) {
+    const v = playList.find((x) => x.id === id) || { title: "", dur: 60 };
+    this.vid = id;
+    this.t = 0;
+    this.d = v.dur;
+    const hue = (id.length * 37 + playList.indexOf(v) * 23) % 360;
+    this.box.style.background = "linear-gradient(135deg, hsl(" + hue + ",70%,45%), hsl(" + (hue + 60) % 360 + ",65%,28%))";
+    this.box.firstChild.textContent = v.title;
+    clearInterval(this.timer);
+    this._s(3);
+    setTimeout(() => {
+      if (this.vid === id) this.playVideo();
+    }, 500);
+  }
+  playVideo() {
+    clearInterval(this.timer);
+    this._s(1);
+    this.timer = setInterval(() => {
+      this.t += 0.25;
+      if (this.t >= this.d) {
+        this.t = this.d;
+        clearInterval(this.timer);
+        this._s(0);
+      }
+    }, 250);
+  }
+  pauseVideo() {
+    clearInterval(this.timer);
+    this._s(2);
+  }
+  stopVideo() {
+    clearInterval(this.timer);
+    this.st = 5;
+  }
+  seekTo(s) {
+    this.t = clamp(s, 0, this.d);
+  }
+  getCurrentTime() {
+    return this.t;
+  }
+  getDuration() {
+    return this.d;
+  }
+  getPlayerState() {
+    return this.st;
+  }
+  getVideoData() {
+    return { video_id: this.vid };
+  }
+  _s(s) {
+    this.st = s;
+    onState(s);
+  }
+}
+function playAt(idx) {
+  const v = playList[idx];
+  if (!v) return;
+  if (remainingSec() <= 0) {
+    lastFocus.vid = idx;
+    timeUp();
+    return;
+  }
+  playIdx = idx;
+  curVid = v.id;
+  pState = -1;
+  clearEnd();
+  hideErr();
+  $("#osd-title").textContent = v.title;
+  updateOSD(0, v.dur);
+  spinner(true);
+  if (current !== "player") show("player");
+  $("#shield").focus();
+  showOSD(4e3);
+  ensurePlayer().then((p) => {
+    if (curVid !== v.id || current !== "player") return;
+    p.loadVideoById(v.id);
+  }).catch((e) => showErr(errText(e), false));
+  startTimers();
+}
+function startTimers() {
+  clearInterval(tickT);
+  tickT = setInterval(() => {
+    if (!player || current !== "player") return;
+    try {
+      updateOSD(player.getCurrentTime(), player.getDuration() || (playList[playIdx] || {}).dur);
+    } catch (e) {
+    }
+    if (pState === 1 || pState === 3) addWatch(0.5);
+  }, 500);
+  clearInterval(guardT);
+  if (!DEMO) guardT = setInterval(() => {
+    if (!player || pState !== 1) return;
+    try {
+      const d = player.getVideoData();
+      if (d && d.video_id && d.video_id !== curVid) {
+        player.stopVideo();
+        closePlayer();
+      }
+    } catch (e) {
+    }
+  }, 1500);
+}
+function onState(s) {
+  pState = s;
+  if (current !== "player") return;
+  if (s === 1) {
+    spinner(false);
+    showOSD(3500);
+  } else if (s === 3 || s === -1) spinner(true);
+  else if (s === 2) {
+    spinner(false);
+    showOSD(0);
+  } else if (s === 0) {
+    spinner(false);
+    onEnded();
+  }
+}
+function onPlayerError(code) {
+  spinner(false);
+  if (code === 101 || code === 150) showErr("صاحب هالفيديو ما بيسمح بتشغيله خارج يوتيوب.", true);
+  else if (code === 153 || code === 152) showErr("يوتيوب رفض تشغيل الفيديو (خطأ " + code + "). لازم يكون التطبيق مفتوح من رابط https، مش من ملف محلي.", false);
+  else if (code === 100) showErr("هالفيديو انحذف أو صار خاص.", true);
+  else showErr("ما قدرنا نشغّل هالفيديو.", true);
+}
+function showErr(msg, autoNext) {
+  $("#p-err-msg").textContent = msg;
+  $("#p-err").classList.remove("hidden");
+  clearTimeout(errT);
+  if (autoNext && playList[playIdx + 1]) errT = setTimeout(() => playAt(playIdx + 1), 4e3);
+}
+function hideErr() {
+  clearTimeout(errT);
+  $("#p-err").classList.add("hidden");
+}
+function onEnded() {
+  const next = playList[playIdx + 1];
+  if (!settings.autoNext || !next) {
+    closePlayer();
+    return;
+  }
+  $("#next-img").src = next.thumb;
+  $("#next-title").textContent = next.title;
+  endCount = 5;
+  $("#next-count").textContent = endCount;
+  $("#p-end").classList.remove("hidden");
+  hideOSD();
+  clearInterval(endT);
+  endT = setInterval(() => {
+    endCount--;
+    $("#next-count").textContent = Math.max(0, endCount);
+    if (endCount <= 0) {
+      clearEnd();
+      playAt(playIdx + 1);
+    }
+  }, 1e3);
+}
+function clearEnd() {
+  clearInterval(endT);
+  endT = null;
+  $("#p-end").classList.add("hidden");
+}
+function closePlayer() {
+  if (usage) saveUsage();
+  clearEnd();
+  hideErr();
+  clearInterval(tickT);
+  clearInterval(guardT);
+  try {
+    if (player) {
+      player.pauseVideo();
+      player.stopVideo();
+    }
+  } catch (e) {
+  }
+  curVid = null;
+  hideOSD();
+  spinner(false);
+  show("channel");
+  const tile = $('#v-grid .v[data-i="' + playIdx + '"]');
+  focusEl(tile || $("#v-grid .v") || $("#channel .back-btn"));
+  if (tile && $$("#v-grid .v").length - playIdx <= 8) loadMore();
+}
+function togglePlay() {
+  if (!player) return;
+  let st;
+  try {
+    st = player.getPlayerState();
+  } catch (e) {
+    return;
+  }
+  if (st === 1 || st === 3) {
+    player.pauseVideo();
+    flash("pause");
+  } else {
+    player.playVideo();
+    flash("play");
+  }
+}
+function seekBy(d) {
+  if (!player) return;
+  try {
+    const dur = player.getDuration() || 0;
+    const t = clamp(player.getCurrentTime() + d, 0, Math.max(0, dur - 1));
+    player.seekTo(t, true);
+    updateOSD(t, dur);
+  } catch (e) {
+    return;
+  }
+  const el = $("#p-seek");
+  el.textContent = (d > 0 ? "تقديم " : "ترجيع ") + Math.abs(d) + " ثواني";
+  el.className = "p-seek on " + (d > 0 ? "fwd" : "rew");
+  clearTimeout(seekT);
+  seekT = setTimeout(() => {
+    el.className = "p-seek";
+  }, 700);
+  showOSD(3500);
+}
+function flash(kind) {
+  const el = $("#p-flash");
+  el.className = "p-flash on " + kind;
+  clearTimeout(flashT);
+  flashT = setTimeout(() => {
+    el.className = "p-flash " + kind;
+  }, 650);
+}
+function spinner(on) {
+  $("#p-spin").classList.toggle("on", on);
+}
+function showOSD(ms) {
+  $("#osd").classList.add("on");
+  clearTimeout(osdT);
+  if (ms) osdT = setTimeout(() => {
+    if (pState === 1) hideOSD();
+  }, ms);
+}
+function hideOSD() {
+  clearTimeout(osdT);
+  $("#osd").classList.remove("on");
+}
+function updateOSD(t, d) {
+  d = d || 0;
+  const pct = d ? clamp(t / d, 0, 1) * 100 : 0;
+  $("#osd-fill").style.width = pct + "%";
+  $("#osd-knob").style.left = pct + "%";
+  $("#osd-cur").textContent = fmtTime(t);
+  $("#osd-dur").textContent = fmtTime(d);
+}
+function playerKey(code) {
+  if (endT) {
+    if (code === 13 || code === 415 || code === 32) {
+      clearEnd();
+      playAt(playIdx + 1);
+    } else if (isBack(code)) closePlayer();
+    return;
+  }
+  if (!$("#p-err").classList.contains("hidden")) {
+    if (isBack(code)) closePlayer();
+    return;
+  }
+  switch (code) {
+    case 13:
+    case 32:
+    case 463:
+      togglePlay();
+      break;
+    // OK / space / play-pause
+    case 415:
+      if (player) {
+        player.playVideo();
+        flash("play");
+      }
+      break;
+    case 19:
+      if (player) {
+        player.pauseVideo();
+        flash("pause");
+      }
+      break;
+    case 37:
+    case 412:
+      seekBy(-10);
+      break;
+    // left / rewind
+    case 39:
+    case 417:
+      seekBy(10);
+      break;
+    // right / fast-forward
+    case 38:
+    case 40:
+      showOSD(pState === 1 ? 3500 : 0);
+      break;
+    case 33:
+      if (playList[playIdx + 1]) playAt(playIdx + 1);
+      break;
+    // channel up = next
+    case 34:
+      if (playIdx > 0) playAt(playIdx - 1);
+      break;
+    // channel down = previous
+    case 413:
+      closePlayer();
+      break;
+    // stop
+    default:
+      if (isBack(code)) closePlayer();
+  }
+}
+let pin = { buf: "", mode: "enter", first: "", done: null, cancel: null };
+function openPin(opts) {
+  const has = !!store.get("pin", null);
+  pin = { buf: "", mode: opts.change || !has ? "new" : "enter", first: "", done: opts.done, cancel: opts.cancel };
+  renderPin("");
+  show("pin");
+  focusEl($('.key[data-d="1"]'));
+}
+function renderPin(msg, bad) {
+  const titles = { enter: "منطقة الأهل", new: "رقم سري جديد", confirm: "تأكيد الرقم السري" };
+  const hints = { enter: "أدخل الرقم السري (4 أرقام)", new: "اختار 4 أرقام ما يعرفها الأولاد", confirm: "أدخل نفس الأرقام مرة ثانية" };
+  $("#pin-title").textContent = titles[pin.mode];
+  const m = $("#pin-msg");
+  m.textContent = msg || hints[pin.mode];
+  m.classList.toggle("bad", !!bad);
+  $$("#pin-dots i").forEach((d, i) => d.classList.toggle("on", i < pin.buf.length));
+}
+function pinPress(d) {
+  if (d === "del") {
+    pin.buf = pin.buf.slice(0, -1);
+    renderPin();
+    return;
+  }
+  if (d === "back") {
+    if (pin.cancel) pin.cancel();
+    return;
+  }
+  if (pin.buf.length >= 4) return;
+  pin.buf += d;
+  renderPin();
+  if (pin.buf.length === 4) setTimeout(pinSubmit, 180);
+}
+function pinShake() {
+  const dots = $("#pin-dots");
+  dots.classList.remove("shake");
+  void dots.offsetWidth;
+  dots.classList.add("shake");
+}
+function pinSubmit() {
+  const v = pin.buf;
+  pin.buf = "";
+  if (pin.mode === "enter") {
+    if (hash(v) === store.get("pin")) {
+      pin.done();
+      return;
+    }
+    pinShake();
+    renderPin("رقم غلط، جرّب مرة ثانية", true);
+  } else if (pin.mode === "new") {
+    pin.first = v;
+    pin.mode = "confirm";
+    renderPin();
+  } else {
+    if (v === pin.first) {
+      store.set("pin", hash(v));
+      toast("انحفظ الرقم السري");
+      pin.done();
+      return;
+    }
+    pin.mode = "new";
+    pinShake();
+    renderPin("الرقمين مش متطابقين، ابدأ من جديد", true);
+  }
+}
+let addFound = null;
+function openSettings() {
+  renderSettings();
+  $("#add-in").value = "";
+  $("#add-res").innerHTML = "";
+  addFound = null;
+  $("#settings-scroll").scrollTop = 0;
+  show("settings");
+  focusEl($("#add-in"));
+}
+function renderSettings() {
+  $("#ch-count").textContent = channels.length;
+  const list = $("#ch-list");
+  if (!channels.length) list.innerHTML = '<p class="none">ما في قنوات لسا.</p>';
+  else list.innerHTML = channels.map(
+    (c) => '<div class="row"><img src="'.concat(esc(c.thumb), '" alt=""><div class="info"><b>').concat(esc(c.title), "</b><span>").concat(c.source === "file" ? "من ملف القنوات" : "انضافت من التلفزيون", '</span></div><button class="f btn danger" data-del="').concat(esc(c.id), '">حذف</button></div>')
+  ).join("");
+  $("#restore-btn").classList.toggle("hidden", !removedIds().length);
+  $$(".tog[data-k]").forEach((t) => t.classList.toggle("on", !!settings[t.getAttribute("data-k")]));
+  renderTimeSettings();
+  $("#set-foot").innerHTML = "نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
+}
+function renderTimeSettings() {
+  const u = getUsage();
+  $("#limit-val").textContent = limitOn() ? settings.dailyLimit + " دقيقة" : "بدون حد";
+  let t = "اليوم اتفرجوا " + Math.floor(u.sec / 60) + " دقيقة";
+  if (limitOn()) t += " · باقي " + fmtMin(remainingSec()) + (u.bonus ? " (منها " + u.bonus + " دقيقة إضافية)" : "");
+  $("#time-today").textContent = t;
+  $("#bonus-btn").classList.toggle("hidden", !limitOn());
+}
+function addSearch() {
+  return __async(this, null, function* () {
+    const q = $("#add-in").value.trim();
+    const res = $("#add-res");
+    if (!q) {
+      focusEl($("#add-in"));
+      return;
+    }
+    res.innerHTML = '<p class="res-msg"><span class="dots"><i></i><i></i><i></i></span></p>';
+    addFound = null;
+    try {
+      const ch = yield api.resolve(q);
+      if (current !== "settings") return;
+      if (!ch) throw new ApiError("notfound");
+      addFound = ch;
+      const exists = channels.some((c) => c.id === ch.id);
+      res.innerHTML = '<div class="res"><img src="'.concat(esc(ch.thumb), '" alt=""><div class="info"><b>').concat(esc(ch.title), "</b><span>").concat(ch.subs ? fmtCount(ch.subs) + " مشترك" : "", "</span></div>") + (exists ? '<span class="muted" style="font-size:2.4rem">موجودة أصلاً</span>' : '<button class="f btn primary" data-act="add-ok">أضف القناة</button><button class="f btn" data-act="add-no">إلغاء</button>') + "</div>";
+      focusEl($('[data-act="add-ok"]') || $("#add-in"));
+    } catch (e) {
+      if (current !== "settings") return;
+      res.innerHTML = '<p class="res-msg bad">' + esc(errText(e)) + "</p>";
+      focusEl($("#add-in"));
+    }
+  });
+}
+function addConfirm() {
+  if (!addFound) return;
+  const ch = addFound;
+  const keep = { id: ch.id, title: ch.title, thumb: ch.thumb, uploads: ch.uploads, hue: ch.hue };
+  const list = tvChannels().filter((c) => c.id !== ch.id);
+  list.push(keep);
+  store.set("channels", list);
+  store.set("removed", removedIds().filter((id) => id !== ch.id));
+  rebuildChannelsLocal();
+  if (!channels.some((c) => c.id === ch.id)) channels.push(Object.assign({}, keep, { source: "tv" }));
+  addFound = null;
+  $("#add-in").value = "";
+  $("#add-res").innerHTML = "";
+  renderSettings();
+  toast("انضافت «" + ch.title + "»");
+  focusEl($("#add-in"));
+}
+function removeChannel(id) {
+  const ch = channels.find((c) => c.id === id);
+  if (!ch) return;
+  const rows = $$("#ch-list [data-del]");
+  const idx = rows.findIndex((b) => b.getAttribute("data-del") === id);
+  store.set("channels", tvChannels().filter((c) => c.id !== id));
+  if (ch.source === "file") {
+    const r = removedIds();
+    if (r.indexOf(id) < 0) r.push(id);
+    store.set("removed", r);
+  }
+  store.del("vc." + id);
+  rebuildChannelsLocal();
+  renderSettings();
+  toast("انحذفت «" + ch.title + "»");
+  const after = $$("#ch-list [data-del]");
+  focusEl(after[Math.min(idx, after.length - 1)] || $("#add-in"));
+}
+function isBack(code) {
+  return code === 461 || code === 27 || code === 8 || code === 10009;
+}
+function goBack() {
+  switch (current) {
+    case "home":
+      try {
+        if (window.webOS && window.webOS.platformBack) window.webOS.platformBack();
+        else window.close();
+      } catch (e) {
+      }
+      break;
+    case "channel":
+      chSeq++;
+      show("home");
+      renderHome();
+      focusHome();
+      break;
+    case "player":
+      closePlayer();
+      break;
+    case "pin":
+      if (pin.cancel) pin.cancel();
+      break;
+    case "timeup":
+      show("home");
+      renderHome();
+      focusHome();
+      break;
+    case "settings":
+      show("home");
+      renderHome();
+      focusEl($("#parent-btn"));
+      break;
+  }
+}
+function onKey(e) {
+  const code = e.keyCode;
+  const t = document.activeElement;
+  const inInput = !!t && t.tagName === "INPUT";
+  if (current === "player") {
+    e.preventDefault();
+    playerKey(code);
+    return;
+  }
+  if (current === "pin") {
+    if (code >= 48 && code <= 57) {
+      e.preventDefault();
+      pinPress(String(code - 48));
+      return;
+    }
+    if (code >= 96 && code <= 105) {
+      e.preventDefault();
+      pinPress(String(code - 96));
+      return;
+    }
+  }
+  if (isBack(code) && !(inInput && code === 8)) {
+    e.preventDefault();
+    goBack();
+    return;
+  }
+  if (inInput) {
+    if (code === 37 || code === 39) return;
+    if (code === 13) {
+      e.preventDefault();
+      addSearch();
+      return;
+    }
+  }
+  const dir = { 37: "left", 38: "up", 39: "right", 40: "down" }[code];
+  if (dir) {
+    e.preventDefault();
+    moveFocus(dir);
+    return;
+  }
+  if (code === 13 && t && t.classList.contains("f")) {
+    e.preventDefault();
+    t.click();
+  }
+}
+function onClick(e) {
+  const b = e.target.closest("button, [data-act]");
+  if (!b) return;
+  if (b.id === "parent-btn") {
+    openPin({ done: openSettings, cancel: () => {
+      show("home");
+      focusEl($("#parent-btn"));
+    } });
+    return;
+  }
+  const act = b.getAttribute("data-act");
+  if (act === "back") {
+    goBack();
+    return;
+  }
+  if (act === "retry") {
+    const id = chs && chs.ch.id;
+    if (id) openChannel(id);
+    return;
+  }
+  if (act === "add-ok") {
+    addConfirm();
+    return;
+  }
+  if (act === "tu-home") {
+    goBack();
+    return;
+  }
+  if (act === "tu-parent") {
+    openPin({ done: openSettings, cancel: () => {
+      show("timeup");
+      focusEl($('[data-act="tu-parent"]'));
+    } });
+    return;
+  }
+  if (act === "add-no") {
+    addFound = null;
+    $("#add-res").innerHTML = "";
+    focusEl($("#add-in"));
+    return;
+  }
+  if (b.classList.contains("ch")) {
+    openChannel(b.getAttribute("data-id"));
+    return;
+  }
+  if (b.classList.contains("v")) {
+    playList = visible(chs.all);
+    playAt(+b.getAttribute("data-i"));
+    return;
+  }
+  if (b.classList.contains("key")) {
+    pinPress(b.getAttribute("data-d"));
+    return;
+  }
+  if (b.id === "add-go") {
+    addSearch();
+    return;
+  }
+  if (b.hasAttribute("data-del")) {
+    removeChannel(b.getAttribute("data-del"));
+    return;
+  }
+  if (b.id === "restore-btn") {
+    store.set("removed", []);
+    loadChannels().then(() => {
+      renderSettings();
+      toast("رجعت كل القنوات");
+      focusEl($("#add-in"));
+    });
+    return;
+  }
+  if (b.id === "limit-btn") {
+    settings.dailyLimit = LIMITS[(LIMITS.indexOf(settings.dailyLimit) + 1) % LIMITS.length];
+    saveSettings();
+    getUsage().warned = 0;
+    saveUsage();
+    renderTimeSettings();
+    return;
+  }
+  if (b.id === "bonus-btn") {
+    const u = getUsage();
+    u.bonus += 15;
+    u.warned = 0;
+    saveUsage();
+    renderTimeSettings();
+    toast("انضافت 15 دقيقة لليوم");
+    return;
+  }
+  if (b.id === "reset-usage") {
+    const u = getUsage();
+    u.sec = 0;
+    u.bonus = 0;
+    u.warned = 0;
+    saveUsage();
+    renderTimeSettings();
+    toast("تصفّر عدّاد اليوم");
+    return;
+  }
+  if (b.classList.contains("tog")) {
+    const k = b.getAttribute("data-k");
+    settings[k] = !settings[k];
+    saveSettings();
+    b.classList.toggle("on", settings[k]);
+    return;
+  }
+  if (b.id === "chg-pin") {
+    openPin({ change: true, done: () => {
+      show("settings");
+      focusEl($("#chg-pin"));
+    }, cancel: () => {
+      show("settings");
+      focusEl($("#chg-pin"));
+    } });
+  }
+}
+function onFocusIn(e) {
+  const el = e.target;
+  if (current === "channel" && el.classList && el.classList.contains("v")) {
+    const total = $$("#v-grid .v").length;
+    if (total - +el.getAttribute("data-i") <= 8) loadMore();
+  }
+}
+function init() {
+  document.addEventListener("keydown", onKey, true);
+  document.addEventListener("click", onClick);
+  document.addEventListener("focusin", onFocusIn);
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest(".f");
+    if (el && el !== document.activeElement && current !== "player") {
+      try {
+        el.focus({ preventScroll: true });
+      } catch (x) {
+        el.focus();
+      }
+    }
+  });
+  window.addEventListener("blur", () => {
+    if (current === "player") setTimeout(() => {
+      window.focus();
+      $("#shield").focus();
+    }, 0);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && current === "player" && player) {
+      try {
+        player.pauseVideo();
+      } catch (e) {
+      }
+    }
+  });
+  window.addEventListener("online", () => {
+    if (current === "home" && !channels.length) start();
+  });
+  setInterval(() => {
+    if (current === "home") renderTimeChip();
+  }, 3e4);
+  window.addEventListener("beforeunload", () => {
+    if (usage) saveUsage();
+  });
+  show("home");
+  start();
+  if (!DEMO && CFG.apiKey) loadYTApi().catch(() => {
+  });
+}
+function start() {
+  channelsLoading = true;
+  renderHome();
+  focusEl($("#parent-btn"));
+  loadChannels().then(() => {
+    renderHome();
+    if (current === "home") focusHome();
+  });
+}
+init();
