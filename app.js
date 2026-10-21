@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.1.0";
+var VERSION = "2.1.1";
 const store = {
   get(k, d) {
     try {
@@ -821,7 +821,8 @@ function refreshChannelsSoon() {
   });
 }
 function enforceChannels() {
-  if (current === "player" && curVid && !channelAllowed(videoChannelId(playList[playIdx]))) {
+  const pv = playList[playIdx];
+  if (current === "player" && curVid && !(pv && pv.parentOk) && !channelAllowed(videoChannelId(pv))) {
     closePlayer();
     show("home");
     renderHome();
@@ -1499,7 +1500,7 @@ function playAt(idx) {
     show("locked");
     return;
   }
-  if (!channelAllowed(videoChannelId(v))) {
+  if (!v.parentOk && !channelAllowed(videoChannelId(v))) {
     toast("هالقناة مش بالقنوات المسموحة");
     if (current === "player") closePlayer();
     return;
@@ -2342,18 +2343,16 @@ function onRemote(c) {
       refreshChannelsSoon();
       break;
     case "playVideo": {
-      if (locked) break;
-      const ch = channels.find((x) => x.id === c.ch);
-      if (!ch || !c.id) {
-        showRemoteMsg("هالفيديو مش من القنوات المسموحة");
-        break;
-      }
-      const v = { id: String(c.id), title: String(c.title || ""), thumb: c.thumb || "https://i.ytimg.com/vi/" + c.id + "/hqdefault.jpg", dur: +c.dur || 0, at: +c.at || 0, ch };
-      const rest = visible(feedData[ch.id] || []).filter((x) => x.id !== v.id).map((x) => Object.assign({}, x, { ch }));
+      if (locked || !c.id) break;
+      const approvedCh = channels.find((x) => x.id === c.ch);
+      const ch = approvedCh || { id: c.ch || "", title: String(c.chTitle || "") };
+      const v = { id: String(c.id), title: String(c.title || ""), thumb: c.thumb || "https://i.ytimg.com/vi/" + c.id + "/hqdefault.jpg", dur: +c.dur || 0, at: +c.at || 0, ch, parentOk: !approvedCh };
+      const rest = approvedCh ? visible(feedData[ch.id] || []).filter((x) => x.id !== v.id).map((x) => Object.assign({}, x, { ch })) : [];
       if (current === "player") closePlayer();
       playFrom = "remote";
       playList = [v].concat(rest);
       playAt(0);
+      if (!approvedCh) showRemoteMsg("فيديو من ماما وبابا ❤");
       break;
     }
   }

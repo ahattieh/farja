@@ -612,7 +612,6 @@
   function approved(chId) { return !!(st && st.chans && st.chans.some(function (c) { return c[0] === chId; })); }
   function playOnTv(v) {
     if (!st || !st.chans) { toast('التلفزيون مش متصل هلّق'); return Promise.resolve(); }
-    if (!approved(v.ch)) { toast('هالفيديو مش من القنوات المسموحة على التلفزيون'); return Promise.resolve(); }
     return send('playVideo', v).then(function () { toast('عم يشتغل على التلفزيون ▶'); }).catch(function () { toast('ما انبعت'); });
   }
   $('#rc-play').addEventListener('submit', function (e) {
@@ -626,7 +625,7 @@
       if (!it) { toast('ما لقيت الفيديو'); return; }
       if (it.status && it.status.embeddable === false) { toast('صاحب الفيديو ما بيسمح يشتغل برّا يوتيوب'); return; }
       var th = it.snippet.thumbnails || {};
-      return playOnTv({ id: it.id, title: it.snippet.title, ch: it.snippet.channelId, thumb: (th.high || th.medium || th.default || {}).url, dur: ytDur(it.contentDetails.duration), at: Date.parse(it.snippet.publishedAt) || 0 })
+      return playOnTv({ id: it.id, title: it.snippet.title, ch: it.snippet.channelId, chTitle: it.snippet.channelTitle, thumb: (th.high || th.medium || th.default || {}).url, dur: ytDur(it.contentDetails.duration), at: Date.parse(it.snippet.publishedAt) || 0 })
         .then(function () { $('#rc-play-in').value = ''; });
     }).catch(function (err) { toast(err.message); });
   });
