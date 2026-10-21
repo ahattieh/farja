@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.7.0";
+var VERSION = "1.8.0";
 const store = {
   get(k, d) {
     try {
@@ -1384,8 +1384,10 @@ class FakePlayer {
     this._s(1);
     const adUntil = QS.has("demoad") && this.t === 0 && !this.adDone ? Date.now() + 5e3 : 0;
     this.adDone = true;
+    if (adUntil) this._s(-1);
     this.timer = setInterval(() => {
       if (Date.now() < adUntil) return;
+      if (this.st === -1) this._s(1);
       this.t += 0.25;
       if (this.t >= this.d) {
         this.t = this.d;
@@ -1505,7 +1507,7 @@ function onState(s) {
       capApplied = true;
       applyCaptions();
     }
-  } else if (s === 3 || s === -1) spinner(true);
+  } else if ((s === 3 || s === -1) && !adMode) spinner(true);
   else if (s === 2) {
     spinner(false);
     showOSD(0);
@@ -1614,6 +1616,7 @@ let adMode = false, adLastT = -1, adFrozenAt = 0;
 function resetAdWatch() {
   adLastT = -1;
   adFrozenAt = 0;
+  unstartedAt = 0;
   setAd(false);
 }
 function adSignals() {
@@ -1626,25 +1629,27 @@ function adSignals() {
   const exp = (playList[playIdx] || {}).dur || 0;
   return { t, d, exp, durMismatch: !!(exp && d > 1 && Math.abs(d - exp) > 3) };
 }
+let unstartedAt = 0;
 function watchForAd() {
-  if (pState !== 1 && pState !== 3) {
-    adFrozenAt = 0;
-    if (pState === 2 || pState === 0) return;
-  }
   const g = adSignals();
-  let frozen = false;
+  let isAd = false;
+  if (pState === -1) {
+    if (!unstartedAt) unstartedAt = Date.now();
+    if (Date.now() - unstartedAt > 1200) isAd = true;
+  } else unstartedAt = 0;
   if (pState === 1) {
     if (Math.abs(g.t - adLastT) < 0.05) {
       if (!adFrozenAt) adFrozenAt = Date.now();
-      else if (Date.now() - adFrozenAt > 2e3) frozen = true;
+      else if (Date.now() - adFrozenAt > 2500) isAd = true;
     } else {
       adFrozenAt = 0;
       adLastT = g.t;
     }
   }
-  const isAd = g.durMismatch || frozen;
+  if (g.durMismatch) isAd = true;
+  if (pState === 2 || pState === 0) isAd = false;
   if (isAd && !adMode) setAd(true);
-  else if (!isAd && adMode && !g.durMismatch && adFrozenAt === 0) setAd(false);
+  else if (!isAd && adMode && (pState === 1 || pState === 2 || pState === 0)) setAd(false);
   if (dbgOn) renderDebug(g);
 }
 let dbgOn = false, dbgKeys = [];
