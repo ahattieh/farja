@@ -1402,6 +1402,15 @@ class FakePlayer {
     clearInterval(this.timer);
     this.st = 5;
   }
+  mute() {
+    this.muted = true;
+  }
+  unMute() {
+    this.muted = false;
+  }
+  isMuted() {
+    return !!this.muted;
+  }
   seekTo(s) {
     this.t = clamp(s, 0, this.d);
   }
@@ -1627,6 +1636,7 @@ function watchForAd() {
     adLastT = t;
   }
 }
+let adMuted = false;
 function setAd(on) {
   if (adMode === on) return;
   adMode = on;
@@ -1635,6 +1645,19 @@ function setAd(on) {
   if (on) {
     hideOSD();
     spinner(false);
+    try {
+      if (player && !player.isMuted()) {
+        player.mute();
+        adMuted = true;
+      }
+    } catch (e) {
+    }
+  } else if (adMuted) {
+    adMuted = false;
+    try {
+      player.unMute();
+    } catch (e) {
+    }
   }
   remoteNotify();
 }

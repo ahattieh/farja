@@ -389,3 +389,26 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 @keyframes adbob { 0%, 100% { transform: translateY(0) rotate(45deg); } 50% { transform: translateY(1.6rem) rotate(45deg); } }
 .osd, .p-flash, .p-seek, .p-spin, .p-ad { pointer-events: none; }
 #player.ad .osd { opacity: 0 !important; }
+
+/* ---------- ad cover: hide the ad, keep only YouTube's Skip corner reachable ---------- */
+#player.ad #shield, #player.ad #shield2 { background: linear-gradient(180deg, var(--sky1) 0%, var(--sky2) 60%, var(--sky3) 100%); }
+.p-ad { top: 0; left: 0; right: auto; bottom: 0; width: 100%; height: 70%; max-width: none; padding: 0; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; justify-content: center; z-index: 4; }
+.p-ad.hidden { display: none !important; }
+.ad-wait { text-align: center; color: var(--white); }
+.ad-wait svg { width: 16rem; height: 16rem; animation: floaty 2.4s ease-in-out infinite; }
+.ad-wait h2 { font-size: 6rem; font-weight: 800; margin: 2.4rem 0 2rem; text-shadow: 0 .5rem 0 rgba(20, 30, 110, .22); }
+.ad-wait .dots i { width: 2.4rem; height: 2.4rem; margin: 0 .9rem; }
+.ad-skip-hint { position: fixed; right: 36%; bottom: 8rem; font-size: 2.2rem; font-weight: 700; color: var(--white); background: rgba(31, 29, 90, .55); padding: 1rem 2rem .8rem; border-radius: 10rem; margin: 0; }
+
+/* Zoom YouTube's frame during ads so its bottom-right corner (where "Skip" appears)
+   lands big and well inside the screen, framed in yellow; everything else stays covered. */
+#player.ad { background: linear-gradient(180deg, var(--sky1) 0%, var(--sky2) 60%, var(--sky3) 100%); }
+#player.ad #yt-wrap { left: -75%; top: -75%; width: 160%; height: 160%; }
+#player.ad #shield { height: 50%; }
+#player.ad #shield2 { width: 40%; height: 50%; }
+#ad-frame { position: absolute; left: 40%; top: 50%; width: 45%; height: 35%; z-index: 3; display: none; pointer-events: none; border: 1rem solid var(--yellow); border-radius: 2.4rem; box-shadow: 0 0 0 .6rem rgba(255, 255, 255, .6), 0 2rem 5rem rgba(0, 0, 0, .35); }
+#player.ad #ad-frame { display: block; animation: shimmer 1.6s ease-in-out infinite; }
+.p-ad { height: 50%; }
+.ad-wait svg { width: 12rem; height: 12rem; }
+.ad-wait h2 { font-size: 5.2rem; margin: 1.6rem 0 1.4rem; }
+.ad-skip-hint { right: auto; left: 4rem; bottom: 22rem; width: 34rem; font-size: 2.6rem; line-height: 1.5; text-align: center; border-radius: 2.4rem; padding: 1.6rem 2rem 1.4rem; background: rgba(31, 29, 90, .7); }
