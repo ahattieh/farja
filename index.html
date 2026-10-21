@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.8.0">
+<link rel="stylesheet" href="style.css?v=2.0.0">
 </head>
 <body>
 
@@ -26,6 +26,7 @@
         <span class="brand-name">صندوق <b>الفرجة</b></span>
       </div>
       <div class="top-btns">
+      <button class="f kid-btn hidden" id="kid-btn"></button>
       <button class="f search-btn" id="search-btn">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.8"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         <span>ابحث</span>
@@ -61,10 +62,19 @@
           <p id="ch-sub" class="muted"></p>
         </div>
       </div>
+      <button id="ch-fav" class="f fav-btn"><i>❤</i><span>أضف لقنواتي المفضلة</span></button>
     </header>
     <div id="ch-tabs" class="tabs"></div>
     <div id="v-grid" class="v-grid"></div>
     <div id="v-more" class="v-more hidden"><span class="dots"><i></i><i></i><i></i></span></div>
+  </div>
+</section>
+
+<!-- ============ WHO'S WATCHING ============ -->
+<section id="kids" class="screen">
+  <div class="kids-wrap">
+    <h1>مين بيتفرج؟</h1>
+    <div id="kids-grid" class="kids-grid"></div>
   </div>
 </section>
 
@@ -218,6 +228,16 @@
       </div>
 
       <div class="card">
+        <h2>الأولاد <span id="kid-count" class="count"></span></h2>
+        <p class="muted">كل ولد إله مفضلته ووقته وكمّل المشاهدة تبعه. القنوات مشتركة للكل.</p>
+        <div id="kid-list" class="ch-list"></div>
+        <div class="add-row" style="margin-top:2rem">
+          <input id="kid-in" class="f inp" type="text" dir="auto" maxlength="20" autocomplete="off" placeholder="اسم الولد">
+          <button id="kid-add" class="f btn primary">أضف</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>وقت الفرجة</h2>
         <p id="time-today" class="muted"></p>
         <button class="f tog val" id="limit-btn"><span>الحد اليومي</span><b id="limit-val"></b></button>
@@ -240,7 +260,7 @@
 <div id="toast" class="toast"></div>
 <div id="remote-msg" class="remote-msg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="var(--yellow)"/></svg><p id="remote-msg-text"></p></div>
 
-<script src="config.js?v=1.8.0"></script>
-<script src="app.js?v=1.8.0"></script>
+<script src="config.js?v=2.0.0"></script>
+<script src="app.js?v=2.0.0"></script>
 </body>
 </html>

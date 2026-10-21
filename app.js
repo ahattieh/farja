@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.8.0";
+var VERSION = "2.0.0";
 const store = {
   get(k, d) {
     try {
@@ -47,6 +47,14 @@ const store = {
 };
 const settings = Object.assign({ hideShorts: false, autoNext: true, dailyLimit: 0 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
+const KID_COLORS = ["#ff5d73", "#ffd23f", "#2ec98b", "#9b5de5", "#ff9f1c", "#19c3c3"];
+let kids = store.get("kids", []);
+let kidId = store.get("kid", kids[0] ? kids[0].id : "main");
+if (!kids.some((k) => k.id === kidId)) kidId = kids[0] ? kids[0].id : "main";
+const pk = (k) => kidId === "main" ? k : "kid." + kidId + "." + k;
+function curKid() {
+  return kids.find((k) => k.id === kidId) || null;
+}
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -471,16 +479,16 @@ function todayStr() {
   const d = /* @__PURE__ */ new Date();
   return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
 }
-let usage = store.get("usage", null);
+let usage = store.get(pk("usage"), null);
 function getUsage() {
   if (!usage || usage.date !== todayStr()) {
     usage = { date: todayStr(), sec: 0, bonus: 0, warned: 0 };
-    store.set("usage", usage);
+    store.set(pk("usage"), usage);
   }
   return usage;
 }
 function saveUsage() {
-  store.set("usage", usage);
+  store.set(pk("usage"), usage);
 }
 function limitOn() {
   return settings.dailyLimit > 0;
@@ -724,7 +732,8 @@ function rowHTML(title, inner, extraClass) {
 function renderHome() {
   const hr = (/* @__PURE__ */ new Date()).getHours();
   renderTimeChip();
-  $("#greet").textContent = hr < 12 ? "صباح الخير!" : hr < 17 ? "نهاركم سعيد!" : "مساء الخير!";
+  const kn = curKid() && kids.length ? " يا " + curKid().name : "";
+  $("#greet").textContent = (hr < 12 ? "صباح الخير" : hr < 17 ? "نهارك سعيد" : "مساء الخير") + kn + "!";
   const notice = $("#notice");
   if (!DEMO && !CFG.apiKey) {
     notice.innerHTML = 'التطبيق محتاج مفتاح <b dir="ltr">YouTube Data API</b> حتى يجيب الفيديوهات. ضيفه بملف <b dir="ltr">config.js</b> (الخطوات بملف README).';
@@ -764,10 +773,11 @@ function renderHome() {
     rowLists.favs = fv.map((f) => Object.assign({}, f, { ch: channels.find((c) => f.ch && c.id === f.ch.id) || f.ch }));
     html += rowHTML("مفضلتي ❤", rowLists.favs.map((v, i) => videoCard(v, "favs", i, false)).join(""));
   }
-  html += rowHTML("القنوات", channels.map(
-    (c) => '<button class="f ch" data-id="'.concat(esc(c.id), '" data-key="ch:').concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt=""></span><span class="nm">').concat(esc(c.title), "</span></button>")
-  ).join(""), "chans");
-  channels.forEach((c) => {
+  const chBubble = (c, row) => '<button class="f ch" data-id="'.concat(esc(c.id), '" data-key="').concat(row, ":").concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt="">').concat(isFavCh(c.id) ? '<i class="ch-heart">❤</i>' : "", '</span><span class="nm">').concat(esc(c.title), "</span></button>");
+  const favChs = channels.filter((c) => isFavCh(c.id));
+  if (favChs.length) html = html.replace(/(<section class="hrow[^"]*"><h2>الجديد من قنواتكم)/, rowHTML("قنواتي المفضلة ❤", favChs.map((c) => chBubble(c, "fch")).join(""), "chans") + "$1");
+  html += rowHTML("كل القنوات", channels.map((c) => chBubble(c, "ch")).join(""), "chans");
+  favChs.concat(channels.filter((c) => !isFavCh(c.id))).forEach((c) => {
     const list = visible(feedData[c.id] || []).slice(0, 12);
     if (!list.length) return;
     const key = "c:" + c.id;
@@ -805,9 +815,25 @@ function refreshChannelsSoon() {
   const before = channels.map((c) => c.id).join(",");
   loadChannels().then(() => {
     const changed = channels.map((c) => c.id).join(",") !== before;
+    if (changed) enforceChannels();
     if (changed && current === "home") rerenderHomeKeepFocus();
     refreshHomeData();
   });
+}
+function enforceChannels() {
+  if (current === "player" && curVid && !channelAllowed(videoChannelId(playList[playIdx]))) {
+    closePlayer();
+    show("home");
+    renderHome();
+    focusHome(true);
+    toast("هالقناة انشالت من القنوات المسموحة");
+  }
+  if (current === "channel" && chs && !channelAllowed(chs.ch.id)) {
+    show("home");
+    renderHome();
+    focusHome(true);
+  }
+  if (current === "search") renderSearch();
 }
 function focusHome(noRefresh) {
   if (!noRefresh) refreshChannelsSoon();
@@ -833,6 +859,7 @@ function openChannel(id) {
   $("#ch-sub").textContent = "";
   $("#channel-scroll").scrollTop = 0;
   renderTabs();
+  renderFavChBtn();
   show("channel");
   const cached = getCached(ch.id);
   if (cached) {
@@ -1225,8 +1252,8 @@ function kbPress(b) {
   }
   srChanged();
 }
-let hist = store.get("hist", []);
-let favs = store.get("favs", []);
+let hist = store.get(pk("hist"), []);
+let favs = store.get(pk("favs"), []);
 let histTick = 0;
 let capApplied = false;
 function slimVideo(v) {
@@ -1248,10 +1275,37 @@ function histSave(force, ended) {
   if (!force && pos < 5) return;
   const e = Object.assign(slimVideo(v), { pos: ended ? dur : Math.floor(pos), dur: Math.floor(dur), seen: Date.now() });
   hist = [e].concat(hist.filter((h) => h.id !== v.id)).slice(0, 40);
-  store.set("hist", hist);
+  store.set(pk("hist"), hist);
+}
+let favCh = store.get(pk("favCh"), []);
+function isFavCh(id) {
+  return favCh.indexOf(id) >= 0;
+}
+function toggleFavCh() {
+  if (!chs) return;
+  const id = chs.ch.id;
+  if (isFavCh(id)) {
+    favCh = favCh.filter((x) => x !== id);
+    toast("انشالت من قنواتي المفضلة");
+  } else {
+    favCh = [id].concat(favCh);
+    toast("صارت من قنواتي المفضلة ❤");
+  }
+  store.set(pk("favCh"), favCh);
+  renderFavChBtn();
+}
+function renderFavChBtn() {
+  const b = $("#ch-fav");
+  if (!b || !chs) return;
+  const on = isFavCh(chs.ch.id);
+  b.classList.toggle("on", on);
+  b.querySelector("span").textContent = on ? "من قنواتي المفضلة" : "أضف لقنواتي المفضلة";
 }
 function channelAllowed(id) {
-  return !id || channels.some((c) => c.id === id);
+  return !!id && channels.some((c) => c.id === id);
+}
+function videoChannelId(v) {
+  return v && v.ch && v.ch.id || playFrom === "channel" && chs && chs.ch && chs.ch.id || null;
 }
 function continueList() {
   return hist.filter((h) => channelAllowed(h.ch && h.ch.id) && h.pos > 20 && (!h.dur || h.pos < h.dur - 20)).slice(0, 12);
@@ -1270,7 +1324,7 @@ function toggleFav() {
     toast("انضاف للمفضلة ❤");
     flash("heart");
   }
-  store.set("favs", favs);
+  store.set(pk("favs"), favs);
   updateFavBadge();
   remoteNotify();
 }
@@ -1443,6 +1497,11 @@ function playAt(idx) {
   }
   if (locked) {
     show("locked");
+    return;
+  }
+  if (!channelAllowed(videoChannelId(v))) {
+    toast("هالقناة مش بالقنوات المسموحة");
+    if (current === "player") closePlayer();
     return;
   }
   playIdx = idx;
@@ -1934,6 +1993,7 @@ function openSettings() {
   focusEl($("#add-in"));
 }
 function renderSettings() {
+  renderKidsSettings();
   $("#ch-count").textContent = channels.length;
   const list = $("#ch-list");
   if (!channels.length) list.innerHTML = '<p class="none">ما في قنوات لسا.</p>';
@@ -2020,6 +2080,7 @@ function removeChannel(id) {
   store.del("idx2." + id);
   delete idxMem[id];
   rebuildChannelsLocal();
+  enforceChannels();
   renderSettings();
   toast("انحذفت «" + ch.title + "»");
   const after = $$("#ch-list [data-del]");
@@ -2053,6 +2114,11 @@ function goBack() {
       break;
     case "pin":
       if (pin.cancel) pin.cancel();
+      break;
+    case "kids":
+      show("home");
+      renderHome();
+      focusHome(true);
       break;
     case "timeup":
       show("home");
@@ -2111,6 +2177,7 @@ function statusObj() {
     t: Date.now(),
     state,
     screen: current,
+    kid: curKid() ? curKid().name : "",
     video: v ? { id: v.id, title: v.title, ch: v.ch && v.ch.title || chs && chs.ch && chs.ch.title || "", thumb: v.thumb } : null,
     pos,
     dur,
@@ -2269,6 +2336,10 @@ function onRemote(c) {
     case "debug":
       toggleDebug();
       break;
+    case "reloadChannels":
+      lastListLoad = 0;
+      refreshChannelsSoon();
+      break;
   }
   remoteNotify(true);
 }
@@ -2343,6 +2414,111 @@ function renderPairing() {
     $("#pair-qr").innerHTML = '<img src="parent-qr.svg" alt="">';
   });
 }
+function kidAvatar(k, big) {
+  const letter = esc((k.name || "?").trim().charAt(0));
+  return '<span class="kid-av'.concat(big ? " big" : "", '" style="background:').concat(esc(k.color), '"><b>').concat(letter, '</b><i class="kid-eyes"></i></span>');
+}
+function renderKidChip() {
+  const b = $("#kid-btn");
+  const k = curKid();
+  b.classList.toggle("hidden", kids.length < 2);
+  if (k) b.innerHTML = kidAvatar(k, false) + "<span>" + esc(k.name) + "</span>";
+}
+function switchKid(id) {
+  if (usage) saveUsage();
+  if (current === "player") closePlayer();
+  kidId = id;
+  store.set("kid", id);
+  usage = store.get(pk("usage"), null);
+  hist = store.get(pk("hist"), []);
+  favs = store.get(pk("favs"), []);
+  favCh = store.get(pk("favCh"), []);
+  lastFocus.homeKey = null;
+  homeFocusPending = true;
+  renderKidChip();
+  show("home");
+  renderHome();
+  focusHome(true);
+  const k = curKid();
+  if (k) toast("أهلين " + k.name + "!");
+  remoteNotify(true);
+}
+function openKids() {
+  const grid = $("#kids-grid");
+  grid.innerHTML = kids.map(
+    (k) => '<button class="f kid" data-kid="'.concat(esc(k.id), '">').concat(kidAvatar(k, true), '<span class="kid-nm">').concat(esc(k.name), "</span></button>")
+  ).join("");
+  show("kids");
+  focusEl($('#kids-grid .kid[data-kid="' + kidId + '"]') || $("#kids-grid .kid"));
+}
+function renderKidsSettings() {
+  const box = $("#kid-list");
+  if (!kids.length) box.innerHTML = '<p class="none">ما في أسماء لسا. ضيف اسم كل ولد حتى يصير إله مفضلة ووقت خاص فيه.</p>';
+  else box.innerHTML = kids.map((k) => {
+    const u = store.get(k.id === "main" ? "usage" : "kid." + k.id + ".usage", null);
+    const mins = u && u.date === todayStr() ? Math.floor(u.sec / 60) : 0;
+    return '<div class="row">'.concat(kidAvatar(k, false), '<div class="info"><b>').concat(esc(k.name), "</b><span>اليوم اتفرج ").concat(mins, ' دقيقة</span></div><button class="f btn" data-kcolor="').concat(esc(k.id), '">لون</button><button class="f btn danger" data-kdel="').concat(esc(k.id), '">حذف</button></div>');
+  }).join("");
+  $("#kid-count").textContent = kids.length;
+}
+function addKid() {
+  const inp = $("#kid-in");
+  const name = inp.value.trim().slice(0, 20);
+  if (!name) {
+    focusEl(inp);
+    return;
+  }
+  const id = kids.length ? "k" + Date.now().toString(36) : "main";
+  kids.push({ id, name, color: KID_COLORS[kids.length % KID_COLORS.length] });
+  store.set("kids", kids);
+  if (kids.length === 1) {
+    kidId = id;
+    store.set("kid", id);
+  }
+  inp.value = "";
+  renderKidsSettings();
+  renderKidChip();
+  toast("انضاف «" + name + "»");
+  focusEl(inp);
+}
+function delKid(id) {
+  const k = kids.find((x) => x.id === id);
+  if (!k || !confirmTwice("kdel" + id)) {
+    toast("اضغط حذف مرة ثانية للتأكيد");
+    return;
+  }
+  kids = kids.filter((x) => x.id !== id);
+  store.set("kids", kids);
+  if (id !== "main") ["usage", "hist", "favs", "favCh"].forEach((x) => store.del("kid." + id + "." + x));
+  if (kidId === id) {
+    kidId = kids[0] ? kids[0].id : "main";
+    store.set("kid", kidId);
+    usage = store.get(pk("usage"), null);
+    hist = store.get(pk("hist"), []);
+    favs = store.get(pk("favs"), []);
+    favCh = store.get(pk("favCh"), []);
+  }
+  renderKidsSettings();
+  renderKidChip();
+  toast("انحذف «" + k.name + "»");
+  focusEl($("#kid-list [data-kdel]") || $("#kid-in"));
+}
+let confirmKey = "", confirmAt = 0;
+function confirmTwice(key) {
+  const ok = confirmKey === key && Date.now() - confirmAt < 4e3;
+  confirmKey = ok ? "" : key;
+  confirmAt = Date.now();
+  return ok;
+}
+function cycleKidColor(id) {
+  const k = kids.find((x) => x.id === id);
+  if (!k) return;
+  k.color = KID_COLORS[(KID_COLORS.indexOf(k.color) + 1) % KID_COLORS.length];
+  store.set("kids", kids);
+  renderKidsSettings();
+  renderKidChip();
+  focusEl($('#kid-list [data-kcolor="' + id + '"]'));
+}
 function onKey(e) {
   const code = e.keyCode;
   const t = document.activeElement;
@@ -2398,7 +2574,8 @@ function onKey(e) {
         focusEl($("#sr-grid .v.f") || $(".kb-key[data-k]"));
         return;
       }
-      addSearch();
+      if (t.id === "kid-in") addKid();
+      else addSearch();
       return;
     }
   }
@@ -2420,6 +2597,30 @@ function onClick(e) {
   const act = b.getAttribute("data-act");
   if (b.id === "search-btn") {
     openSearch();
+    return;
+  }
+  if (b.id === "kid-btn") {
+    openKids();
+    return;
+  }
+  if (b.hasAttribute("data-kid")) {
+    switchKid(b.getAttribute("data-kid"));
+    return;
+  }
+  if (b.id === "kid-add") {
+    addKid();
+    return;
+  }
+  if (b.hasAttribute("data-kdel")) {
+    delKid(b.getAttribute("data-kdel"));
+    return;
+  }
+  if (b.hasAttribute("data-kcolor")) {
+    cycleKidColor(b.getAttribute("data-kcolor"));
+    return;
+  }
+  if (b.id === "ch-fav") {
+    toggleFavCh();
     return;
   }
   if (act === "lock-parent") {
@@ -2656,9 +2857,13 @@ function start() {
   channelsLoading = true;
   renderHome();
   focusEl($("#parent-btn"));
+  renderKidChip();
   loadChannels().then(() => {
     renderHome();
-    if (current === "home") focusHome(true);
+    if (current === "home") {
+      if (kids.length >= 2 && !locked) openKids();
+      else focusHome(true);
+    }
     return refreshHomeData().then(() => setTimeout(() => buildIndex(), 8e3));
   });
 }

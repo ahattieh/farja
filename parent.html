@@ -449,6 +449,7 @@
         if (!list.some(function (x) { return idOf(x) === c.id; })) list.push({ id: c.id, title: c.title, thumb: c.thumb, uploads: c.uploads });
       });
       renderList(); renderResults();
+      if (room) send('reloadChannels').catch(function () {});
       toast('انضافت «' + c.title + '»');
     } catch (err) {
       b.disabled = false; b.textContent = 'أضف';
@@ -469,6 +470,7 @@
         for (var i = list.length - 1; i >= 0; i--) if (idOf(list[i]) === id) list.splice(i, 1);
       });
       renderList(); renderResults();
+      if (room) send('reloadChannels').catch(function () {});
       toast('انحذفت «' + name + '»');
     } catch (err) {
       b.disabled = false;
@@ -518,6 +520,7 @@
     $('#rc-img').src = v ? v.thumb : 'icon.png';
     $('#rc-title').textContent = v ? v.title : (state === 'off' ? 'التلفزيون مسكّر أو التطبيق مش مفتوح' : state === 'browsing' ? 'ما في فيديو شغّال هلّق' : LABEL[state]);
     $('#rc-ch').textContent = v ? v.ch : '';
+    if (online && st.kid) $('#rc-seen').textContent = '👤 ' + st.kid + ' · ' + ago(Date.now() - st.t);
     var bar = $('#rc-bar');
     if (v && st.dur) {
       var pos = st.pos + (st.state === 'playing' ? (Date.now() - st.t) / 1000 : 0);
