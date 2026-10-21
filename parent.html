@@ -505,7 +505,7 @@
     return m < 60 ? 'قبل ' + m + ' د' : 'قبل ' + Math.round(m / 60) + ' س';
   }
   function fmt(t) { t = Math.max(0, Math.floor(t)); var m = Math.floor(t / 60), x = t % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
-  var LABEL = { playing: 'عم يشتغل', paused: 'موقّف مؤقتاً', loading: 'عم يحمّل', browsing: 'عم يتصفح القوائم', timeup: 'خلص وقت اليوم', locked: 'مقفول', closed: 'التطبيق مسكّر', off: 'ما في اتصال' };
+  var LABEL = { ad: 'إعلان', playing: 'عم يشتغل', paused: 'موقّف مؤقتاً', loading: 'عم يحمّل', browsing: 'عم يتصفح القوائم', timeup: 'خلص وقت اليوم', locked: 'مقفول', closed: 'التطبيق مسكّر', off: 'ما في اتصال' };
 
   var renderStatus = function () {
     var online = st && st.state !== 'closed' && Date.now() - st.t < 6.5 * 60 * 1000;
@@ -533,6 +533,7 @@
     var lk = $('#rc-lock'); lk.setAttribute('data-cmd', isLocked ? 'unlock' : 'lock'); lk.className = 'btn ' + (isLocked ? 'go' : 'warn');
     lk.querySelector('span').textContent = isLocked ? 'افتح الشاشة' : 'اقفل الشاشة';
     var inPlayer = online && st.video;
+    if (online && st.state === 'ad') lab.className = 'state paused';
     document.querySelectorAll('[data-cmd="prev"],[data-cmd="next"],[data-cmd="back10"],[data-cmd="fwd10"],[data-cmd="stop"],[data-cmd="speed"],[data-cmd="cc"],#rc-toggle').forEach(function (b) { b.disabled = !inPlayer; });
     if (inPlayer && !st.hasNext) $('[data-cmd="next"]').disabled = true;
     $('#rc-usage').textContent = !st ? '' : 'اليوم اتفرجوا ' + (st.watched || 0) + ' دقيقة' + (st.left != null ? ' · باقي ' + st.left + ' دقيقة' : ' · بدون حد يومي');

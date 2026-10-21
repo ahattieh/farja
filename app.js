@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.5.0";
+var VERSION = "1.6.0";
 const store = {
   get(k, d) {
     try {
@@ -1382,7 +1382,10 @@ class FakePlayer {
   playVideo() {
     clearInterval(this.timer);
     this._s(1);
+    const adUntil = QS.has("demoad") && this.t === 0 && !this.adDone ? Date.now() + 5e3 : 0;
+    this.adDone = true;
     this.timer = setInterval(() => {
+      if (Date.now() < adUntil) return;
       this.t += 0.25;
       if (this.t >= this.d) {
         this.t = this.d;
@@ -1436,6 +1439,7 @@ function playAt(idx) {
   pState = -1;
   capApplied = false;
   speedIdx = 0;
+  resetAdWatch();
   clearEnd();
   hideErr();
   $("#osd-title").textContent = v.title;
@@ -1466,6 +1470,7 @@ function startTimers() {
     }
     if (pState === 1 || pState === 3) addWatch(0.5);
     if (pState === 1 && ++histTick % 20 === 0) histSave();
+    watchForAd();
   }, 500);
   clearInterval(guardT);
   if (!DEMO) guardT = setInterval(() => {
@@ -1546,6 +1551,7 @@ function clearEnd() {
   $("#p-end").classList.add("hidden");
 }
 function closePlayer() {
+  resetAdWatch();
   if (usage) saveUsage();
   histSave(true);
   clearEnd();
@@ -1595,7 +1601,46 @@ function togglePlay() {
     flash("play");
   }
 }
+let adMode = false, adLastT = -1, adFrozenAt = 0;
+function resetAdWatch() {
+  adLastT = -1;
+  adFrozenAt = 0;
+  setAd(false);
+}
+function watchForAd() {
+  if (pState !== 1) {
+    adFrozenAt = 0;
+    return;
+  }
+  let t;
+  try {
+    t = player.getCurrentTime();
+  } catch (e) {
+    return;
+  }
+  if (Math.abs(t - adLastT) < 0.05) {
+    if (!adFrozenAt) adFrozenAt = Date.now();
+    else if (!adMode && Date.now() - adFrozenAt > 2e3) setAd(true);
+  } else {
+    if (adLastT >= 0 && adMode) setAd(false);
+    adFrozenAt = 0;
+    adLastT = t;
+  }
+}
+function setAd(on) {
+  if (adMode === on) return;
+  adMode = on;
+  $("#player").classList.toggle("ad", on);
+  $("#p-ad").classList.toggle("hidden", !on);
+  if (on) {
+    hideOSD();
+    spinner(false);
+  }
+  remoteNotify();
+}
 function seekBy(d) {
+  adLastT = -1;
+  adFrozenAt = 0;
   if (!player) return;
   try {
     const dur = player.getDuration() || 0;
@@ -1994,7 +2039,7 @@ function statusObj() {
   } catch (e) {
   }
   const u = getUsage();
-  const state = locked ? "locked" : current === "player" ? pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
+  const state = locked ? "locked" : current === "player" ? adMode ? "ad" : pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
   return {
     v: 1,
     t: Date.now(),

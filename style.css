@@ -373,3 +373,19 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 .osd-fav { display: none; color: var(--coral); margin-left: 1.6rem; }
 .osd-fav.on { display: inline; }
 .p-flash.heart { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21s-7.5-4.6-9.5-9.2C1 8.2 3.4 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.6 0 6 3.7 4.5 7.3C19.5 16.4 12 21 12 21z' fill='%23ff5d73'/%3E%3C/svg%3E"); background-color: var(--white); }
+
+/* ---------- ads: let the Magic Remote reach YouTube's Skip button ---------- */
+#shield2 { position: absolute; left: 0; bottom: 0; width: 66%; height: 30%; z-index: 2; display: none; }
+#player.ad #shield { height: 70%; }
+#player.ad #shield2 { display: block; }
+#player.ad #yt-wrap iframe { pointer-events: auto; }
+.p-ad {
+  position: absolute; top: 4rem; right: 4rem; z-index: 6; display: flex; align-items: center; max-width: 90rem;
+  padding: 1.6rem 2.8rem 1.4rem; border-radius: 3rem; background: var(--white); color: var(--navy); box-shadow: 0 0 0 .6rem var(--yellow), var(--toy);
+}
+.p-ad b { font-size: 2.6rem; font-weight: 800; background: var(--yellow); border-radius: 1.4rem; padding: .4rem 1.4rem .2rem; margin-left: 1.6rem; flex-shrink: 0; }
+.p-ad span { font-size: 2.5rem; font-weight: 700; line-height: 1.4; }
+.p-ad-arrow { position: fixed; right: 9rem; bottom: 13rem; width: 6rem; height: 6rem; border-right: 1.2rem solid var(--yellow); border-bottom: 1.2rem solid var(--yellow); transform: rotate(45deg); animation: adbob 1s ease-in-out infinite; filter: drop-shadow(0 .4rem .6rem rgba(0,0,0,.4)); }
+@keyframes adbob { 0%, 100% { transform: translateY(0) rotate(45deg); } 50% { transform: translateY(1.6rem) rotate(45deg); } }
+.osd, .p-flash, .p-seek, .p-spin, .p-ad { pointer-events: none; }
+#player.ad .osd { opacity: 0 !important; }
