@@ -446,3 +446,30 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 #kid-list .row .btn { margin-right: 1.6rem; }
 
 .kid-eyes { display: none; }
+
+/* ---------- seek bar: pointer + preview ---------- */
+.osd.on .osd-bar .track { pointer-events: auto; cursor: pointer; }
+.osd-bar .track:before { content: ''; position: absolute; left: 0; right: 0; top: -3rem; bottom: -3rem; } /* bigger target for the Magic Remote */
+.seek-prev { position: absolute; bottom: 4.4rem; left: 0; width: 32rem; margin-left: -16rem; opacity: 0; transform: translateY(1rem); transition: opacity .15s ease, transform .15s ease; pointer-events: none; text-align: center; }
+.seek-prev.on { opacity: 1; transform: none; }
+.seek-prev img { display: block; width: 32rem; height: 18rem; object-fit: cover; border-radius: 1.6rem; border: .5rem solid var(--white); background: #222; box-shadow: 0 1.6rem 3.6rem rgba(0, 0, 0, .45); }
+.seek-prev span { display: inline-block; margin-top: 1rem; font-size: 2.6rem; font-weight: 800; color: var(--navy); background: var(--yellow); padding: .4rem 1.6rem .2rem; border-radius: 1.2rem; direction: ltr; }
+
+/* ---------- player control bar (Amira-style) ---------- */
+.osd-btns { display: flex; align-items: center; justify-content: center; margin-top: 3rem; }
+.osd.on .osd-btns { pointer-events: auto; }
+.pbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 12rem; height: 12rem; margin: 0 1rem; border-radius: 3rem; color: var(--white); background: rgba(255, 255, 255, .14); transition: transform .15s ease, background-color .15s ease, color .15s ease, box-shadow .15s ease; cursor: pointer; }
+.pbtn svg { width: 4.6rem; height: 4.6rem; }
+.pbtn .pb-txt { font-size: 3.4rem; font-weight: 800; line-height: 4.6rem; font-family: inherit; }
+.pbtn span { font-size: 1.9rem; font-weight: 700; margin-top: .6rem; opacity: .9; }
+.pbtn.big { width: 15rem; height: 15rem; background: var(--yellow); color: var(--navy); }
+.pbtn.big svg { width: 6.4rem; height: 6.4rem; }
+.pbtn.on { color: var(--coral); }
+.pbtn#pb-cc.on, .pbtn#pb-speed.on { color: var(--yellow); }
+.pbtn.dim { opacity: .4; }
+.pbtn.sel, .pbtn:hover { background: var(--white); color: var(--navy); transform: scale(1.12); box-shadow: 0 0 0 .6rem var(--yellow), 0 1.6rem 3.6rem rgba(0, 0, 0, .4); }
+.pbtn.big.sel, .pbtn.big:hover { background: var(--yellow); box-shadow: 0 0 0 .6rem var(--white), 0 1.6rem 3.6rem rgba(0, 0, 0, .4); }
+.pbtn.on.sel { color: var(--coral); }
+.pb-sep { width: .3rem; height: 7rem; background: rgba(255, 255, 255, .25); border-radius: 1rem; margin: 0 2rem; }
+.osd { padding-bottom: 4rem; }
+.osd-hints { display: none; }

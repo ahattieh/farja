@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.1.1">
+<link rel="stylesheet" href="style.css?v=2.2.0">
 </head>
 <body>
 
@@ -117,16 +117,22 @@
     <div class="osd-title"><span id="osd-fav" class="osd-fav">❤</span><span id="osd-title"></span></div>
     <div class="osd-bar" dir="ltr">
       <span id="osd-cur">0:00</span>
-      <div class="track"><div class="fill" id="osd-fill"></div><div class="knob" id="osd-knob"></div></div>
+      <div class="track" id="osd-track"><div class="fill" id="osd-fill"></div><div class="knob" id="osd-knob"></div>
+        <div id="seek-prev" class="seek-prev"><img id="seek-prev-img" alt=""><span id="seek-prev-t">0:00</span></div></div>
       <span id="osd-dur">0:00</span>
     </div>
-    <div class="osd-hints">
-      <span><kbd>OK</kbd> إيقاف وتشغيل</span>
-      <span><kbd dir="ltr">◀ ▶</kbd> ترجيع وتقديم</span>
-      <span><kbd>▲</kbd> مفضلة</span>
-      <span><kbd style="background:#3a86ff">●</kbd> السرعة</span>
-      <span><kbd style="background:#e6b800">●</kbd> الترجمة</span>
-      <span><kbd>رجوع</kbd> للقائمة</span>
+    <div class="osd-btns" id="osd-btns" dir="ltr">
+      <button class="pbtn" data-pb="back" title="رجوع"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>رجوع</span></button>
+      <span class="pb-sep"></span>
+      <button class="pbtn" data-pb="prev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M19 5L9 12l10 7z" fill="currentColor"/></svg><span>السابق</span></button>
+      <button class="pbtn" data-pb="rew"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6L4 12l7 6zM20 6l-7 6 7 6z" fill="currentColor"/></svg><span>-10</span></button>
+      <button class="pbtn big" data-pb="play" id="pb-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z" fill="currentColor"/></svg><span>تشغيل</span></button>
+      <button class="pbtn" data-pb="fwd"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 6l7 6-7 6zM4 6l7 6-7 6z" fill="currentColor"/></svg><span>+10</span></button>
+      <button class="pbtn" data-pb="next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M5 5l10 7-10 7z" fill="currentColor"/></svg><span>التالي</span></button>
+      <span class="pb-sep"></span>
+      <button class="pbtn" data-pb="fav" id="pb-fav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.5-9.2C1 8.2 3.4 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.6 0 6 3.7 4.5 7.3C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg><span>مفضلة</span></button>
+      <button class="pbtn" data-pb="speed" id="pb-speed"><b class="pb-txt">1x</b><span>السرعة</span></button>
+      <button class="pbtn" data-pb="cc" id="pb-cc"><b class="pb-txt">CC</b><span>ترجمة</span></button>
     </div>
   </div>
   <div id="p-end" class="p-end hidden">
@@ -260,7 +266,7 @@
 <div id="toast" class="toast"></div>
 <div id="remote-msg" class="remote-msg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="var(--yellow)"/></svg><p id="remote-msg-text"></p></div>
 
-<script src="config.js?v=2.1.1"></script>
-<script src="app.js?v=2.1.1"></script>
+<script src="config.js?v=2.2.0"></script>
+<script src="app.js?v=2.2.0"></script>
 </body>
 </html>

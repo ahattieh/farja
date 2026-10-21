@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.1.1";
+var VERSION = "2.2.0";
 const store = {
   get(k, d) {
     try {
@@ -1656,6 +1656,20 @@ function closePlayer() {
   focusEl(tile || $("#v-grid .v") || $("#channel .back-btn"));
   if (tile && $$("#v-grid .v").length - playIdx <= 8) loadMore();
 }
+let pausedSince = 0;
+const PAUSE_LIMIT = 15 * 60 * 1e3;
+function reclaimFocus() {
+  try {
+    window.focus();
+  } catch (e) {
+  }
+  const sh = $("#shield");
+  try {
+    sh.focus({ preventScroll: true });
+  } catch (e) {
+    sh.focus();
+  }
+}
 function togglePlay() {
   if (!player) return;
   let st;
@@ -1770,6 +1784,15 @@ function seekBy(d) {
   const el = $("#p-seek");
   el.textContent = (d > 0 ? "تقديم " : "ترجيع ") + Math.abs(d) + " ثواني";
   el.className = "p-seek on " + (d > 0 ? "fwd" : "rew");
+  try {
+    const dd = player.getDuration() || 0;
+    if (dd) {
+      showSeekPreview(clamp(player.getCurrentTime() / dd, 0, 1));
+      clearTimeout(window._spT);
+      window._spT = setTimeout(hideSeekPreview, 1200);
+    }
+  } catch (x) {
+  }
   clearTimeout(seekT);
   seekT = setTimeout(() => {
     el.className = "p-seek";
@@ -1789,6 +1812,8 @@ function spinner(on) {
 }
 function showOSD(ms) {
   $("#osd").classList.add("on");
+  updatePbButtons();
+  if (pbFocus >= 0) ms = 0;
   clearTimeout(osdT);
   if (ms) osdT = setTimeout(() => {
     if (pState === 1) hideOSD();
@@ -1797,6 +1822,84 @@ function showOSD(ms) {
 function hideOSD() {
   clearTimeout(osdT);
   $("#osd").classList.remove("on");
+  pbClear();
+}
+let prevImgKey = "";
+function trackPos(e) {
+  const tr = $("#osd-track");
+  const r = tr.getBoundingClientRect();
+  return clamp((e.clientX - r.left) / r.width, 0, 1);
+}
+function showSeekPreview(p) {
+  const v = playList[playIdx];
+  if (!v) return;
+  let dur = 0;
+  try {
+    dur = player.getDuration() || v.dur || 0;
+  } catch (e) {
+    dur = v.dur || 0;
+  }
+  const box = $("#seek-prev");
+  box.style.left = p * 100 + "%";
+  $("#seek-prev-t").textContent = fmtTime(p * dur);
+  const n = p < 0.375 ? 1 : p < 0.625 ? 2 : 3;
+  const key = v.id + n;
+  if (key !== prevImgKey) {
+    prevImgKey = key;
+    const img = $("#seek-prev-img");
+    if (DEMO) {
+      img.removeAttribute("src");
+      img.style.background = "hsl(" + (n * 90 + 30) + ",70%,55%)";
+    } else {
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = "https://i.ytimg.com/vi/" + v.id + "/" + n + ".jpg";
+      };
+      img.src = "https://i.ytimg.com/vi/" + v.id + "/mq" + n + ".jpg";
+    }
+  }
+  box.classList.add("on");
+}
+function hideSeekPreview() {
+  $("#seek-prev").classList.remove("on");
+}
+function initPointer() {
+  const sh = $("#shield");
+  sh.addEventListener("mousemove", () => {
+    if (current === "player" && !adMode) showOSD(pState === 1 ? 3500 : 0);
+  });
+  sh.addEventListener("click", () => {
+    reclaimFocus();
+    if (!adMode) showOSD(pState === 1 ? 3500 : 0);
+  });
+  $("#osd-btns").addEventListener("click", (e) => {
+    const b = e.target.closest(".pbtn");
+    if (b) {
+      pbAction(b.getAttribute("data-pb"));
+      reclaimFocus();
+    }
+  });
+  $("#osd-btns").addEventListener("mousemove", () => showOSD(0));
+  const tr = $("#osd-track");
+  tr.addEventListener("mousemove", (e) => {
+    showOSD(pState === 1 ? 4e3 : 0);
+    showSeekPreview(trackPos(e));
+  });
+  tr.addEventListener("mouseleave", hideSeekPreview);
+  tr.addEventListener("click", (e) => {
+    const p = trackPos(e);
+    try {
+      const d = player.getDuration() || 0;
+      if (d) {
+        player.seekTo(p * d, true);
+        updateOSD(p * d, d);
+        adLastT = -1;
+        adFrozenAt = 0;
+      }
+    } catch (x) {
+    }
+    reclaimFocus();
+  });
 }
 function updateOSD(t, d) {
   d = d || 0;
@@ -1837,6 +1940,67 @@ function toggleCaptions() {
   applyCaptions();
   toast(ccOn ? "الترجمة: شغّالة (إذا متوفرة للفيديو)" : "الترجمة: مطفية");
 }
+function pbAction(k) {
+  switch (k) {
+    case "back":
+      closePlayer();
+      return;
+    case "prev":
+      if (playIdx > 0) playAt(playIdx - 1);
+      else seekBy(-1e6);
+      break;
+    case "rew":
+      seekBy(-10);
+      break;
+    case "play":
+      togglePlay();
+      break;
+    case "fwd":
+      seekBy(10);
+      break;
+    case "next":
+      if (playList[playIdx + 1]) playAt(playIdx + 1);
+      else toast("ما في فيديو بعده");
+      break;
+    case "fav":
+      toggleFav();
+      break;
+    case "speed":
+      cycleSpeed();
+      break;
+    case "cc":
+      toggleCaptions();
+      break;
+  }
+  updatePbButtons();
+  showOSD(pState === 1 ? 5e3 : 0);
+}
+function updatePbButtons() {
+  const playing = pState === 1 || pState === 3;
+  const pb = $("#pb-play");
+  pb.querySelector("svg").innerHTML = playing ? '<rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor"/>' : '<path d="M8 5l12 7-12 7z" fill="currentColor"/>';
+  pb.querySelector("span").textContent = playing ? "إيقاف" : "تشغيل";
+  const v = curVid && playList[playIdx];
+  $("#pb-fav").classList.toggle("on", !!(v && isFav(v.id)));
+  $("#pb-speed .pb-txt").textContent = SPEEDS[speedIdx] + "x";
+  $("#pb-cc").classList.toggle("on", ccOn);
+  $('[data-pb="next"]').classList.toggle("dim", !playList[playIdx + 1]);
+}
+let pbFocus = -1;
+function pbButtons() {
+  return $$("#osd-btns .pbtn");
+}
+function pbSet(i) {
+  const bs = pbButtons();
+  pbFocus = clamp(i, 0, bs.length - 1);
+  bs.forEach((b, j) => b.classList.toggle("sel", j === pbFocus));
+  updatePbButtons();
+  showOSD(0);
+}
+function pbClear() {
+  pbFocus = -1;
+  pbButtons().forEach((b) => b.classList.remove("sel"));
+}
 function playerKey(code) {
   if (code === 48 || code === 96) {
     const now = Date.now();
@@ -1857,6 +2021,31 @@ function playerKey(code) {
   if (!$("#p-err").classList.contains("hidden")) {
     if (isBack(code)) closePlayer();
     return;
+  }
+  if (pbFocus >= 0) {
+    if (code === 37) {
+      pbSet(pbFocus - 1);
+      return;
+    }
+    if (code === 39) {
+      pbSet(pbFocus + 1);
+      return;
+    }
+    if (code === 38) {
+      pbClear();
+      showOSD(pState === 1 ? 3500 : 0);
+      return;
+    }
+    if (code === 13) {
+      pbAction(pbButtons()[pbFocus].getAttribute("data-pb"));
+      return;
+    }
+    if (code === 40) return;
+    if (isBack(code)) {
+      pbClear();
+      hideOSD();
+      return;
+    }
   }
   switch (code) {
     case 13:
@@ -1893,7 +2082,7 @@ function playerKey(code) {
       break;
     // up / red = favorite
     case 40:
-      showOSD(pState === 1 ? 3500 : 0);
+      pbSet(pbButtons().findIndex((b) => b.getAttribute("data-pb") === "play"));
       break;
     case 33:
       if (playList[playIdx + 1]) playAt(playIdx + 1);
@@ -2796,12 +2985,15 @@ function onFocusIn(e) {
     if (total - +el.getAttribute("data-i") <= 8) loadMore();
   }
 }
+function measureRem_() {
+}
 function measureRem() {
   remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 10;
 }
 function init() {
   measureRem();
   window.addEventListener("resize", measureRem);
+  initPointer();
   document.addEventListener("keydown", onKey, true);
   document.addEventListener("click", onClick);
   document.addEventListener("focusin", onFocusIn);
@@ -2821,10 +3013,30 @@ function init() {
     }
   });
   window.addEventListener("blur", () => {
-    if (current === "player") setTimeout(() => {
-      window.focus();
-      $("#shield").focus();
-    }, 0);
+    if (current === "player") setTimeout(reclaimFocus, 0);
+  });
+  setInterval(() => {
+    if (current !== "player") return;
+    const a = document.activeElement;
+    if (!document.hasFocus() || !a || a.tagName === "IFRAME" || a === document.body) reclaimFocus();
+    if (pState === 2) {
+      if (!pausedSince) pausedSince = Date.now();
+      else if (Date.now() - pausedSince > PAUSE_LIMIT) {
+        pausedSince = 0;
+        histSave(true);
+        closePlayer();
+        toast("رجعنا للقائمة لأن الفيديو كان موقّف من زمان");
+      }
+    } else pausedSince = 0;
+  }, 1e3);
+  document.addEventListener("webOSRelaunch", () => {
+    reclaimFocus();
+    if (current === "player" && pState !== 1) {
+      showOSD(0);
+    }
+  });
+  window.addEventListener("focus", () => {
+    if (current === "player") reclaimFocus();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && current === "player" && player) {
@@ -2832,6 +3044,10 @@ function init() {
         player.pauseVideo();
       } catch (e) {
       }
+    }
+    if (!document.hidden && current === "player") {
+      reclaimFocus();
+      showOSD(0);
     }
   });
   window.addEventListener("online", () => {
