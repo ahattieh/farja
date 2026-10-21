@@ -81,9 +81,43 @@
   .toast {
     position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 16px); opacity: 0;
     background: var(--navy); color: #fff; font-weight: 800; padding: 12px 22px; border-radius: 99px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.45); transition: opacity .25s, transform .25s; pointer-events: none; white-space: nowrap;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); transition: opacity .25s, transform .25s; pointer-events: none; width: max-content; max-width: calc(100% - 32px); text-align: center; line-height: 1.5;
   }
   .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  /* remote */
+  .rc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .rc-head h2 { margin: 0; flex: 1; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #c9c8e6; flex-shrink: 0; }
+  .dot.on { background: var(--teal); box-shadow: 0 0 0 4px rgba(46,201,139,.2); }
+  .seen { font-size: 13px; color: var(--muted); }
+  .now { display: flex; gap: 12px; align-items: center; background: var(--bg); border-radius: 18px; padding: 10px; min-height: 84px; }
+  .now img { width: 116px; height: 66px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: #dfe2f7; }
+  .now .info { flex: 1; min-width: 0; }
+  .now b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; line-height: 1.4; }
+  .now span { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .state { display: inline-block; font-size: 12px; font-weight: 800; padding: 2px 10px; border-radius: 99px; background: #dfe2f7; color: var(--navy); margin-bottom: 4px; }
+  .state.playing { background: #dcf7ec; color: #17935f; }
+  .state.paused { background: #fff3c4; color: #8a6a00; }
+  .state.locked, .state.timeup, .state.closed, .state.off { background: #ffe3e7; color: #d6304a; }
+  .bar { height: 6px; border-radius: 6px; background: #dfe2f7; margin-top: 8px; overflow: hidden; direction: ltr; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--coral), var(--accent)); border-radius: 6px; }
+  .rc-grid { display: flex; gap: 8px; margin-top: 12px; }
+  .rc-grid .btn { flex: 1; padding: 12px 6px; font-size: 15px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .rc-grid .btn svg { width: 24px; height: 24px; }
+  .rc-grid .btn.big { flex: 1.4; }
+  .rc-grid .btn.warn { background: #ffe3e7; color: #d6304a; }
+  .rc-grid .btn.go { background: #dcf7ec; color: #17935f; }
+  .rc-time { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .rc-time span { flex: 1; }
+  .rc-msg { display: flex; gap: 8px; margin-top: 12px; }
+  .btn.mic { padding: 0 12px; display: flex; align-items: center; }
+  .btn.mic svg { width: 24px; height: 24px; }
+  .btn.mic.on { background: var(--coral); color: #fff; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  html { background: #5b5bd6; }
+  .small-link { background: none; color: var(--muted); font-size: 13px; padding: 10px 0 0; text-decoration: underline; }
+  .btn[disabled] { opacity: .45; }
   .foot { text-align: center; font-size: 13px; padding-top: 6px; color: #fff !important; }
 </style>
 </head>
@@ -96,6 +130,64 @@
     </div>
     <button id="logout" class="link-btn hidden">خروج</button>
   </header>
+
+
+  <!-- TV remote -->
+  <section id="remote" class="card">
+    <div id="pair-box">
+      <h2>تحكّم بالتلفزيون</h2>
+      <p class="muted">من التلفزيون: زر «الأهل» ثم الرقم السري، وصوّر الكود بكاميرا الموبايل. أو اكتب كود الربط اللي تحت الكود:</p>
+      <div class="row-in">
+        <input id="room-in" class="inp" dir="ltr" autocomplete="off" autocapitalize="off" placeholder="xxxxx-xxxxx-xxxxx-xxxxx">
+        <button id="room-btn" class="btn primary">اربط</button>
+      </div>
+    </div>
+    <div id="rc" class="hidden">
+      <div class="rc-head"><span id="rc-dot" class="dot"></span><h2>التلفزيون الآن</h2><span id="rc-seen" class="seen"></span></div>
+      <div class="now">
+        <img id="rc-img" alt="">
+        <div class="info">
+          <span id="rc-state" class="state">…</span>
+          <b id="rc-title">عم نتصل بالتلفزيون…</b>
+          <span id="rc-ch"></span>
+          <div id="rc-bar" class="bar hidden"><i id="rc-fill"></i></div>
+        </div>
+      </div>
+      <div class="rc-grid">
+        <button class="btn" data-cmd="prev"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5L9 12l10 7z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>السابق</button>
+        <button class="btn primary big" id="rc-toggle" data-cmd="toggle"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z" fill="currentColor"/></svg><span>تشغيل</span></button>
+        <button class="btn" data-cmd="next"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>التالي</button>
+      </div>
+      <div class="rc-grid">
+        <button class="btn" data-cmd="back10">⟲ 10ث</button>
+        <button class="btn" data-cmd="stop">للقائمة</button>
+        <button class="btn" data-cmd="fwd10">10ث ⟳</button>
+      </div>
+      <div class="rc-grid">
+        <button class="btn warn" id="rc-lock" data-cmd="lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="3" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/></svg><span>اقفل الشاشة</span></button>
+        <button class="btn warn" data-cmd="close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>سكّر التطبيق</button>
+      </div>
+      <div class="rc-time"><span id="rc-usage"></span><button class="btn go" data-cmd="addTime" data-n="15">+15 دقيقة</button></div>
+      <div class="rc-grid">
+        <button class="btn" data-cmd="speed">السرعة</button>
+        <button class="btn" data-cmd="cc">الترجمة</button>
+      </div>
+      <form id="rc-search" class="rc-msg" autocomplete="off">
+        <button type="button" id="rc-mic" class="btn mic" aria-label="بحث بالصوت"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+        <input id="rc-search-in" class="inp" maxlength="60" dir="auto" enterkeyhint="search" placeholder="ابحث على التلفزيون…">
+        <button class="btn primary" type="submit">ابحث</button>
+      </form>
+      <form id="rc-msg" class="rc-msg" autocomplete="off">
+        <input id="rc-msg-in" class="inp" maxlength="140" dir="auto" placeholder="رسالة تطلع على التلفزيون (مثلاً: يلا العشا!)">
+        <button class="btn primary" type="submit">ابعث</button>
+      </form>
+      <div id="rc-hist-box" class="hidden">
+        <h2 style="margin-top:18px">آخر شي اتفرجوا عليه</h2>
+        <div id="rc-hist" class="list"></div>
+      </div>
+      <button id="rc-unpair" class="small-link">افصل هالموبايل عن التلفزيون</button>
+    </div>
+  </section>
 
   <!-- login -->
   <section id="login" class="card hidden">
@@ -159,7 +251,7 @@
   if (REPO) $('#repo-name').textContent = REPO.split('/')[1];
 
   var toastT;
-  function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('on'); }, 2400); }
+  function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('on'); }, m.length > 60 ? 7000 : 2400); }
   function fmtCount(n) { n = +n || 0; if (n >= 1e6) return (Math.round(n / 1e5) / 10) + ' مليون'; if (n >= 1e3) return (Math.round(n / 100) / 10) + ' ألف'; return String(n); }
   var LOADING = '<p class="msg"><span class="dots"><i></i><i></i><i></i></span></p>';
 
@@ -226,7 +318,13 @@
       cache: 'no-store',
     });
     var j = await r.json().catch(function () { return {}; });
-    if (!r.ok) { var e = new Error(j.message || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+    if (!r.ok) {
+      var msg = j.message || ('HTTP ' + r.status);
+      if (/not accessible by personal access token/i.test(msg)) {
+        msg = 'كلمة السر ما إلها صلاحية الكتابة. بإعدادات الـ Token على GitHub خلّي Contents = Read and write، واختار repo ' + (REPO || 'farja').split('/')[1] + '.';
+      } else if (r.status === 401) msg = 'كلمة السر انتهت أو انحذفت. اضغط «خروج» وأدخل وحدة جديدة.';
+      var e = new Error(msg); e.status = r.status; throw e;
+    }
     return j;
   }
   function b64decode(s) { return decodeURIComponent(escape(atob(s.replace(/\s/g, '')))); }
@@ -376,6 +474,159 @@
       toast('ما انحذفت: ' + err.message);
     }
   });
+
+
+  /* ---------- TV remote (ntfy.sh relay) ---------- */
+  var NTFY = (CFG.ntfy || 'https://ntfy.sh').replace(/\/$/, '');
+  var RKEY = 'farja.room';
+  var room = '';
+  var st = null, stAt = 0, es = null, lastPing = 0;
+  function rtopic(k) { return 'farja-' + room + '-' + k; }
+  function cleanRoom(x) { return String(x || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+  (function () {
+    var m = /[#&]remote=([a-z0-9-]+)/i.exec(location.hash);
+    if (m) {
+      localStorage.setItem(RKEY, cleanRoom(m[1]));
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    room = cleanRoom(localStorage.getItem(RKEY));
+  })();
+
+  function send(cmd, extra) {
+    var body = { cmd: cmd, id: Math.random().toString(36).slice(2) + Date.now(), t: Date.now() };
+    if (extra) Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+    return fetch(NTFY + '/' + rtopic('c'), { method: 'POST', body: JSON.stringify(body) });
+  }
+  function ago(ms) {
+    var s = Math.round(ms / 1000);
+    if (s < 60) return 'هلّق';
+    var m = Math.round(s / 60);
+    return m < 60 ? 'قبل ' + m + ' د' : 'قبل ' + Math.round(m / 60) + ' س';
+  }
+  function fmt(t) { t = Math.max(0, Math.floor(t)); var m = Math.floor(t / 60), x = t % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
+  var LABEL = { playing: 'عم يشتغل', paused: 'موقّف مؤقتاً', loading: 'عم يحمّل', browsing: 'عم يتصفح القوائم', timeup: 'خلص وقت اليوم', locked: 'مقفول', closed: 'التطبيق مسكّر', off: 'ما في اتصال' };
+
+  var renderStatus = function () {
+    var online = st && st.state !== 'closed' && Date.now() - st.t < 6.5 * 60 * 1000;
+    var state = !st ? 'off' : online ? st.state : (st.state === 'closed' ? 'closed' : 'off');
+    $('#rc-dot').className = 'dot' + (online ? ' on' : '');
+    $('#rc-seen').textContent = st ? ago(Date.now() - st.t) : '';
+    var lab = $('#rc-state'); lab.className = 'state ' + state; lab.textContent = LABEL[state] || state;
+    var v = online && st.video;
+    $('#rc-img').src = v ? v.thumb : 'icon.png';
+    $('#rc-title').textContent = v ? v.title : (state === 'off' ? 'التلفزيون مسكّر أو التطبيق مش مفتوح' : state === 'browsing' ? 'ما في فيديو شغّال هلّق' : LABEL[state]);
+    $('#rc-ch').textContent = v ? v.ch : '';
+    var bar = $('#rc-bar');
+    if (v && st.dur) {
+      var pos = st.pos + (st.state === 'playing' ? (Date.now() - st.t) / 1000 : 0);
+      pos = Math.min(pos, st.dur);
+      bar.classList.remove('hidden');
+      $('#rc-fill').style.width = (pos / st.dur * 100) + '%';
+      $('#rc-ch').textContent = v.ch + ' · ' + fmt(pos) + ' / ' + fmt(st.dur);
+    } else bar.classList.add('hidden');
+    var tg = $('#rc-toggle');
+    var playing = online && st.state === 'playing';
+    tg.querySelector('span').textContent = playing ? 'إيقاف' : 'تشغيل';
+    tg.querySelector('svg').innerHTML = playing ? '<rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor"/>' : '<path d="M8 5l12 7-12 7z" fill="currentColor"/>';
+    var isLocked = online && st.state === 'locked';
+    var lk = $('#rc-lock'); lk.setAttribute('data-cmd', isLocked ? 'unlock' : 'lock'); lk.className = 'btn ' + (isLocked ? 'go' : 'warn');
+    lk.querySelector('span').textContent = isLocked ? 'افتح الشاشة' : 'اقفل الشاشة';
+    var inPlayer = online && st.video;
+    document.querySelectorAll('[data-cmd="prev"],[data-cmd="next"],[data-cmd="back10"],[data-cmd="fwd10"],[data-cmd="stop"],[data-cmd="speed"],[data-cmd="cc"],#rc-toggle').forEach(function (b) { b.disabled = !inPlayer; });
+    if (inPlayer && !st.hasNext) $('[data-cmd="next"]').disabled = true;
+    $('#rc-usage').textContent = !st ? '' : 'اليوم اتفرجوا ' + (st.watched || 0) + ' دقيقة' + (st.left != null ? ' · باقي ' + st.left + ' دقيقة' : ' · بدون حد يومي');
+  };
+
+  function takeStatus(raw) {
+    try { var m = typeof raw === 'string' ? JSON.parse(raw) : raw; var x = JSON.parse(m.message); if (x && x.t && (!st || x.t >= st.t)) { st = x; stAt = Date.now(); renderStatus(); } } catch (e) {}
+  }
+
+  function startRemote() {
+    if (!room) { $('#pair-box').classList.remove('hidden'); $('#rc').classList.add('hidden'); return; }
+    $('#pair-box').classList.add('hidden'); $('#rc').classList.remove('hidden');
+    renderStatus();
+    fetch(NTFY + '/' + rtopic('s') + '/json?poll=1&since=12h').then(function (r) { return r.text(); }).then(function (txt) {
+      txt.split('\n').filter(Boolean).forEach(takeStatus);
+    }).catch(function () {});
+    try { if (es) es.close(); } catch (e) {}
+    es = new EventSource(NTFY + '/' + rtopic('s') + '/sse');
+    es.onmessage = function (ev) { takeStatus(ev.data); };
+    ping();
+  }
+  function ping() { if (Date.now() - lastPing > 8000) { lastPing = Date.now(); send('ping').catch(function () {}); } }
+
+  $('#room-btn').addEventListener('click', function () {
+    var r = cleanRoom($('#room-in').value);
+    if (r.length < 16) { toast('الكود ناقص، تأكد منه'); return; }
+    localStorage.setItem(RKEY, r); room = r; startRemote();
+  });
+  $('#rc-unpair').addEventListener('click', function () {
+    if (!confirm('أفصل هالموبايل عن التلفزيون؟')) return;
+    localStorage.removeItem(RKEY); room = ''; st = null; try { es && es.close(); } catch (e) {} startRemote();
+  });
+  $('#remote').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-cmd]');
+    if (!b || b.disabled) return;
+    var cmd = b.getAttribute('data-cmd');
+    if (cmd === 'toggle') cmd = st && st.state === 'playing' ? 'pause' : 'play';
+    if (cmd === 'close' && !confirm('أسكّر التطبيق على التلفزيون؟')) return;
+    var extra = cmd === 'addTime' ? { n: +b.getAttribute('data-n') || 15 } : null;
+    if (cmd === 'lock') {
+      var t = prompt('رسالة تطلع على شاشة القفل (اختياري):', 'خلّصنا فرجة هلّق. بنرجع بعدين!');
+      if (t === null) return;
+      extra = { text: t };
+    }
+    b.disabled = true;
+    send(cmd, extra).then(function () { toast('انبعت ✓'); }).catch(function () { toast('ما انبعت، تأكد من الإنترنت'); })
+      .then(function () { setTimeout(function () { b.disabled = false; renderStatus(); }, 800); });
+  });
+  $('#rc-msg').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = $('#rc-msg-in').value.trim();
+    if (!t) return;
+    send('msg', { text: t }).then(function () { $('#rc-msg-in').value = ''; toast('الرسالة طلعت على التلفزيون'); }).catch(function () { toast('ما انبعتت'); });
+  });
+
+  /* search on the TV, by typing or by voice */
+  function sendSearch(q) {
+    q = (q || '').trim();
+    if (!q) return;
+    send('search', { text: q }).then(function () { toast('النتائج طلعت على التلفزيون'); }).catch(function () { toast('ما انبعت'); });
+  }
+  $('#rc-search').addEventListener('submit', function (e) { e.preventDefault(); sendSearch($('#rc-search-in').value); $('#rc-search-in').blur(); });
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  $('#rc-mic').addEventListener('click', function () {
+    var b = this;
+    if (!SR) { $('#rc-search-in').focus(); toast('اضغط زر المايك بكيبورد الموبايل واحكي'); return; }
+    var r = new SR();
+    r.lang = 'ar-SA'; r.interimResults = true; r.maxAlternatives = 1;
+    b.classList.add('on');
+    r.onresult = function (ev) {
+      var txt = '';
+      for (var i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+      $('#rc-search-in').value = txt;
+      if (ev.results[ev.results.length - 1].isFinal) sendSearch(txt);
+    };
+    r.onerror = function () { b.classList.remove('on'); toast('ما قدرت أسمع، جرّب مرة ثانية أو اكتب'); };
+    r.onend = function () { b.classList.remove('on'); };
+    try { r.start(); } catch (e) { b.classList.remove('on'); }
+  });
+  /* watch history for parents */
+  var _render = renderStatus;
+  renderStatus = function () {
+    _render();
+    var rec = st && st.recent;
+    $('#rc-hist-box').classList.toggle('hidden', !(rec && rec.length));
+    if (!rec || !rec.length) return;
+    var html = rec.map(function (h) {
+      return '<div class="item"><img src="' + esc(h.thumb || 'icon.png') + '" alt="" style="border-radius:12px;width:72px;height:42px;border:0"><div class="info"><b dir="auto">' + esc(h.title) + '</b><span>' + esc(h.ch || '') + (h.at ? ' · ' + ago(Date.now() - h.at) : '') + '</span></div></div>';
+    }).join('');
+    if ($('#rc-hist').innerHTML !== html) $('#rc-hist').innerHTML = html;
+  };
+  setInterval(function () { renderStatus(); }, 1000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && room) { ping(); } });
+  startRemote();
 
   if (token && REPO) showMain(); else logout();
 })();

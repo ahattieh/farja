@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.3.0">
+<link rel="stylesheet" href="style.css?v=1.5.0">
 </head>
 <body>
 
@@ -73,7 +73,8 @@
   <aside class="sr-side">
     <div class="sr-box">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.8"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-      <span id="sr-text" class="sr-text" dir="auto"></span><i class="caret"></i>
+      <input id="sr-input" class="sr-text" dir="auto" type="text" autocomplete="off" spellcheck="false" placeholder="شو بدك تدوّر؟" readonly>
+      <span id="sr-voice" class="sr-voice"><i></i><i></i><i></i></span>
     </div>
     <div id="kb" class="kb" dir="rtl"></div>
     <p id="sr-status" class="sr-status"></p>
@@ -92,7 +93,7 @@
   <div id="p-flash" class="p-flash"></div>
   <div id="p-seek" class="p-seek"></div>
   <div id="osd" class="osd">
-    <div class="osd-title" id="osd-title"></div>
+    <div class="osd-title"><span id="osd-fav" class="osd-fav">❤</span><span id="osd-title"></span></div>
     <div class="osd-bar" dir="ltr">
       <span id="osd-cur">0:00</span>
       <div class="track"><div class="fill" id="osd-fill"></div><div class="knob" id="osd-knob"></div></div>
@@ -101,6 +102,9 @@
     <div class="osd-hints">
       <span><kbd>OK</kbd> إيقاف وتشغيل</span>
       <span><kbd dir="ltr">◀ ▶</kbd> ترجيع وتقديم</span>
+      <span><kbd>▲</kbd> مفضلة</span>
+      <span><kbd style="background:#3a86ff">●</kbd> السرعة</span>
+      <span><kbd style="background:#e6b800">●</kbd> الترجمة</span>
       <span><kbd>رجوع</kbd> للقائمة</span>
     </div>
   </div>
@@ -128,6 +132,16 @@
       <button class="f btn primary" data-act="tu-home">رجوع</button>
       <button class="f btn" data-act="tu-parent">وقت إضافي (للأهل)</button>
     </div>
+  </div>
+</section>
+
+<!-- ============ LOCKED (from phone) ============ -->
+<section id="locked" class="screen">
+  <div class="tu-wrap">
+    <svg class="tu-moon" viewBox="0 0 64 64" aria-hidden="true"><rect x="12" y="28" width="40" height="30" rx="9" fill="var(--yellow)"/><path d="M20 28v-7a12 12 0 0 1 24 0v7" fill="none" stroke="var(--yellow)" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="42" r="4" fill="var(--navy)"/></svg>
+    <h1>التلفزيون مقفول</h1>
+    <p id="lock-msg" class="muted"></p>
+    <div class="tu-btns"><button class="f btn" data-act="lock-parent">فتح (للأهل)</button></div>
   </div>
 </section>
 
@@ -160,10 +174,13 @@
       </header>
 
       <div class="card phone-card">
-        <img src="parent-qr.svg" alt="" class="qr">
-        <div>
-          <h2>أسهل: ضيف القنوات من الموبايل</h2>
-          <p class="muted">صوّر الكود بكاميرا الموبايل، أو افتح:<br><b dir="ltr">ahattieh.github.io/farja/parent.html</b><br>ابحث بالاسم أو الصق رابط القناة، والتلفزيون بيتحدّث لحاله.</p>
+        <div id="pair-qr" class="qr"></div>
+        <div class="pair-info">
+          <h2>الموبايل: تحكّم وضيف قنوات</h2>
+          <p class="muted">صوّر الكود بكاميرا موبايلك. من الصفحة اللي بتفتح بتشوف شو عم ينعرض، بتوقّف وبتقفل التلفزيون، بتزيد وقت، وبتضيف قنوات.</p>
+          <p class="muted">كود الربط: <b id="pair-code" dir="ltr"></b></p>
+          <p id="pair-off" class="muted hidden">التحكم عن بعد مطفى بالإعدادات.</p>
+          <button id="pair-new" class="f btn ghost">اعمل كود جديد (بيفصل الموبايلات القديمة)</button>
         </div>
       </div>
 
@@ -210,8 +227,9 @@
 </section>
 
 <div id="toast" class="toast"></div>
+<div id="remote-msg" class="remote-msg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="var(--yellow)"/></svg><p id="remote-msg-text"></p></div>
 
-<script src="config.js?v=1.3.0"></script>
-<script src="app.js?v=1.3.0"></script>
+<script src="config.js?v=1.5.0"></script>
+<script src="app.js?v=1.5.0"></script>
 </body>
 </html>

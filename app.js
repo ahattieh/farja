@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.3.0";
+var VERSION = "1.5.0";
 const store = {
   get(k, d) {
     try {
@@ -548,8 +548,10 @@ function renderTimeChip() {
 let current = null;
 const lastFocus = {};
 function show(name) {
+  if (locked && name !== "locked" && name !== "pin") name = "locked";
   $$(".screen").forEach((s) => s.classList.toggle("active", s.id === name));
   current = name;
+  remoteNotify();
 }
 function isVisible(el) {
   return !!(el.offsetWidth || el.offsetHeight);
@@ -708,8 +710,8 @@ function buildFeed(max) {
   return out;
 }
 function videoCard(v, row, i, big) {
-  const meta = [(row === "feed" || row === "search") && v.ch ? esc(v.ch.title) : "", ageText(v.at)].filter(Boolean).join(" · ");
-  return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
+  const meta = [(row === "feed" || row === "search" || row === "cont" || row === "favs") && v.ch ? esc(v.ch.title) : "", row === "cont" ? "باقي " + fmtTime(Math.max(0, v.dur - v.pos)) : ageText(v.at)].filter(Boolean).join(" · ");
+  return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(row !== "cont" && v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "").concat(row === "cont" && v.dur ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(v.pos / v.dur * 100)) + '%"></i></span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
 }
 function skelCards(n, big) {
   let s = "";
@@ -745,12 +747,22 @@ function renderHome() {
   }
   const haveAny = channels.some((c) => feedData[c.id]);
   let html = "";
+  const cont = continueList();
+  if (cont.length) {
+    rowLists.cont = cont.map((h) => Object.assign({}, h, { ch: channels.find((c) => h.ch && c.id === h.ch.id) || h.ch }));
+    html += rowHTML("كمّل المشاهدة", rowLists.cont.map((v, i) => videoCard(v, "cont", i, false)).join(""));
+  }
   if (haveAny) {
     const feed = buildFeed(30);
     rowLists.feed = feed;
     html += rowHTML("الجديد من قنواتكم", feed.length ? feed.map((v, i) => videoCard(v, "feed", i, true)).join("") : '<p class="muted row-empty">ما في فيديوهات لسا.</p>');
   } else {
     html += rowHTML("الجديد من قنواتكم", skelCards(4, true));
+  }
+  const fv = favs.filter((f) => channelAllowed(f.ch && f.ch.id));
+  if (fv.length) {
+    rowLists.favs = fv.map((f) => Object.assign({}, f, { ch: channels.find((c) => f.ch && c.id === f.ch.id) || f.ch }));
+    html += rowHTML("مفضلتي ❤", rowLists.favs.map((v, i) => videoCard(v, "favs", i, false)).join(""));
   }
   html += rowHTML("القنوات", channels.map(
     (c) => '<button class="f ch" data-id="'.concat(esc(c.id), '" data-key="ch:').concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt=""></span><span class="nm">').concat(esc(c.title), "</span></button>")
@@ -1092,14 +1104,52 @@ function renderKb() {
     for (const ch of row) html += '<button class="f kb-key" data-k="'.concat(esc(ch), '">').concat(esc(ch), "</button>");
     html += "</div>";
   });
-  html += '<div class="kb-row kb-ctrl"><button class="f kb-key wide" data-kc="space">مسافة</button>' + '<button class="f kb-key" data-kc="del" aria-label="مسح">'.concat(ICON_DEL, "</button>") + '<button class="f kb-key mode" data-kc="mode">'.concat(kbMode === "ar" ? "ABC" : "أ ب ت", "</button>") + '</div><div class="kb-row kb-ctrl"><button class="f kb-key wide2" data-kc="clear">امسح الكل</button></div>';
+  html += '<div class="kb-row kb-ctrl"><button class="f kb-key mic" data-kc="mic" aria-label="بحث بالصوت"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button><button class="f kb-key wide" data-kc="space">مسافة</button>' + '<button class="f kb-key" data-kc="del" aria-label="مسح">'.concat(ICON_DEL, "</button>") + '<button class="f kb-key mode" data-kc="mode">'.concat(kbMode === "ar" ? "ABC" : "أ ب ت", "</button>") + '</div><div class="kb-row kb-ctrl"><button class="f kb-key wide2" data-kc="clear">امسح الكل</button></div>';
   $("#kb").innerHTML = html;
 }
 function updateSearchBox() {
-  const t = $("#sr-text");
-  t.textContent = srQuery;
-  t.classList.toggle("ph", !srQuery);
-  if (!srQuery) t.textContent = "شو بدك تدوّر؟";
+  const t = $("#sr-input");
+  if (t.value !== srQuery) t.value = srQuery;
+}
+let rec = null;
+function startVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const box = $("#sr-voice");
+  if (SR) {
+    try {
+      if (rec) rec.abort();
+      rec = new SR();
+      rec.lang = kbMode === "ar" ? "ar-SA" : "en-US";
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.onresult = (ev) => {
+        let txt = "";
+        for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+        srQuery = txt.trim();
+        srChanged();
+      };
+      rec.onend = () => box.classList.remove("on");
+      rec.onerror = () => {
+        box.classList.remove("on");
+        voiceViaKeyboard();
+      };
+      box.classList.add("on");
+      rec.start();
+      return;
+    } catch (e) {
+      box.classList.remove("on");
+    }
+  }
+  voiceViaKeyboard();
+}
+function voiceViaKeyboard() {
+  const inp = $("#sr-input");
+  inp.removeAttribute("readonly");
+  try {
+    inp.focus();
+  } catch (e) {
+  }
+  toast("اضغط زر المايك 🎤 على الريموت واحكي");
 }
 function srStatus() {
   const el = $("#sr-status");
@@ -1141,6 +1191,7 @@ function srChanged() {
 }
 function openSearch() {
   show("search");
+  $("#sr-input").setAttribute("readonly", "readonly");
   renderKb();
   updateSearchBox();
   renderSearch();
@@ -1163,13 +1214,69 @@ function kbPress(b) {
     if (srQuery && srQuery.slice(-1) !== " ") srQuery += " ";
   } else if (c === "del") srQuery = srQuery.slice(0, -1);
   else if (c === "clear") srQuery = "";
-  else if (c === "mode") {
+  else if (c === "mic") {
+    startVoice();
+    return;
+  } else if (c === "mode") {
     kbMode = kbMode === "ar" ? "en" : "ar";
     renderKb();
     focusEl($('.kb-key[data-kc="mode"]'));
     return;
   }
   srChanged();
+}
+let hist = store.get("hist", []);
+let favs = store.get("favs", []);
+let histTick = 0;
+let capApplied = false;
+function slimVideo(v) {
+  const ch = v.ch || chs && chs.ch || null;
+  return { id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, ch: ch ? { id: ch.id, title: ch.title } : null };
+}
+function histGet(id) {
+  return hist.find((h) => h.id === id);
+}
+function histSave(force, ended) {
+  const v = curVid && playList[playIdx];
+  if (!v) return;
+  let pos = 0, dur = v.dur || 0;
+  try {
+    pos = player.getCurrentTime() || 0;
+    dur = player.getDuration() || dur;
+  } catch (e2) {
+  }
+  if (!force && pos < 5) return;
+  const e = Object.assign(slimVideo(v), { pos: ended ? dur : Math.floor(pos), dur: Math.floor(dur), seen: Date.now() });
+  hist = [e].concat(hist.filter((h) => h.id !== v.id)).slice(0, 40);
+  store.set("hist", hist);
+}
+function channelAllowed(id) {
+  return !id || channels.some((c) => c.id === id);
+}
+function continueList() {
+  return hist.filter((h) => channelAllowed(h.ch && h.ch.id) && h.pos > 20 && (!h.dur || h.pos < h.dur - 20)).slice(0, 12);
+}
+function isFav(id) {
+  return favs.some((f) => f.id === id);
+}
+function toggleFav() {
+  const v = curVid && playList[playIdx];
+  if (!v) return;
+  if (isFav(v.id)) {
+    favs = favs.filter((f) => f.id !== v.id);
+    toast("انشال من المفضلة");
+  } else {
+    favs = [slimVideo(v)].concat(favs).slice(0, 100);
+    toast("انضاف للمفضلة ❤");
+    flash("heart");
+  }
+  store.set("favs", favs);
+  updateFavBadge();
+  remoteNotify();
+}
+function updateFavBadge() {
+  const v = curVid && playList[playIdx];
+  $("#osd-fav").classList.toggle("on", !!(v && isFav(v.id)));
 }
 let player = null;
 let playerReady = null;
@@ -1257,10 +1364,11 @@ class FakePlayer {
     this.timer = null;
     this.vid = null;
   }
-  loadVideoById(id) {
+  loadVideoById(arg) {
+    const id = typeof arg === "object" ? arg.videoId : arg;
     const v = playList.find((x) => x.id === id) || { title: "", dur: 60 };
     this.vid = id;
-    this.t = 0;
+    this.t = typeof arg === "object" && arg.startSeconds || 0;
     this.d = v.dur;
     const hue = (id.length * 37 + playList.indexOf(v) * 23) % 360;
     this.box.style.background = "linear-gradient(135deg, hsl(" + hue + ",70%,45%), hsl(" + (hue + 60) % 360 + ",65%,28%))";
@@ -1319,12 +1427,19 @@ function playAt(idx) {
     timeUp();
     return;
   }
+  if (locked) {
+    show("locked");
+    return;
+  }
   playIdx = idx;
   curVid = v.id;
   pState = -1;
+  capApplied = false;
+  speedIdx = 0;
   clearEnd();
   hideErr();
   $("#osd-title").textContent = v.title;
+  updateFavBadge();
   updateOSD(0, v.dur);
   spinner(true);
   if (current !== "player") show("player");
@@ -1332,7 +1447,12 @@ function playAt(idx) {
   showOSD(4e3);
   ensurePlayer().then((p) => {
     if (curVid !== v.id || current !== "player") return;
-    p.loadVideoById(v.id);
+    const h = histGet(v.id);
+    const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
+    if (resume) {
+      p.loadVideoById({ videoId: v.id, startSeconds: resume });
+      toast("كمّلنا من " + fmtTime(resume));
+    } else p.loadVideoById(v.id);
   }).catch((e) => showErr(errText(e), false));
   startTimers();
 }
@@ -1345,6 +1465,7 @@ function startTimers() {
     } catch (e) {
     }
     if (pState === 1 || pState === 3) addWatch(0.5);
+    if (pState === 1 && ++histTick % 20 === 0) histSave();
   }, 500);
   clearInterval(guardT);
   if (!DEMO) guardT = setInterval(() => {
@@ -1360,11 +1481,16 @@ function startTimers() {
   }, 1500);
 }
 function onState(s) {
+  if (s !== pState && (s === 1 || s === 2 || s === 0)) remoteNotify();
   pState = s;
   if (current !== "player") return;
   if (s === 1) {
     spinner(false);
     showOSD(3500);
+    if (ccOn && !capApplied) {
+      capApplied = true;
+      applyCaptions();
+    }
   } else if (s === 3 || s === -1) spinner(true);
   else if (s === 2) {
     spinner(false);
@@ -1392,6 +1518,7 @@ function hideErr() {
   $("#p-err").classList.add("hidden");
 }
 function onEnded() {
+  histSave(true, true);
   const next = playList[playIdx + 1];
   if (!settings.autoNext || !next) {
     closePlayer();
@@ -1420,6 +1547,7 @@ function clearEnd() {
 }
 function closePlayer() {
   if (usage) saveUsage();
+  histSave(true);
   clearEnd();
   hideErr();
   clearInterval(tickT);
@@ -1441,6 +1569,7 @@ function closePlayer() {
   }
   if (playFrom !== "channel") {
     show("home");
+    rerenderHomeKeepFocus();
     const t = $('#home .v[data-row="' + playFrom + '"][data-i="' + playIdx + '"]');
     focusEl(t || $("#home .hrow .v.f") || $("#parent-btn"));
     return;
@@ -1515,6 +1644,37 @@ function updateOSD(t, d) {
   $("#osd-cur").textContent = fmtTime(t);
   $("#osd-dur").textContent = fmtTime(d);
 }
+const SPEEDS = [1, 1.25, 1.5, 0.75];
+let speedIdx = 0;
+let ccOn = !!store.get("cc", false);
+function cycleSpeed() {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  try {
+    player.setPlaybackRate(SPEEDS[speedIdx]);
+  } catch (e) {
+  }
+  toast("السرعة: " + SPEEDS[speedIdx] + "x");
+  showOSD(3500);
+}
+function applyCaptions() {
+  if (!player || DEMO) return;
+  try {
+    if (ccOn) {
+      player.loadModule("captions");
+      player.setOption("captions", "track", { languageCode: "ar" });
+    } else {
+      player.setOption("captions", "track", {});
+      player.unloadModule("captions");
+    }
+  } catch (e) {
+  }
+}
+function toggleCaptions() {
+  ccOn = !ccOn;
+  store.set("cc", ccOn);
+  applyCaptions();
+  toast(ccOn ? "الترجمة: شغّالة (إذا متوفرة للفيديو)" : "الترجمة: مطفية");
+}
 function playerKey(code) {
   if (endT) {
     if (code === 13 || code === 415 || code === 32) {
@@ -1557,6 +1717,10 @@ function playerKey(code) {
       break;
     // right / fast-forward
     case 38:
+    case 403:
+      toggleFav();
+      break;
+    // up / red = favorite
     case 40:
       showOSD(pState === 1 ? 3500 : 0);
       break;
@@ -1572,6 +1736,14 @@ function playerKey(code) {
       closePlayer();
       break;
     // stop
+    case 406:
+      cycleSpeed();
+      break;
+    // blue = speed
+    case 405:
+      toggleCaptions();
+      break;
+    // yellow = captions
     default:
       if (isBack(code)) closePlayer();
   }
@@ -1642,6 +1814,7 @@ function pinSubmit() {
 }
 function openSettings() {
   renderSettings();
+  renderPairing();
   $("#add-in").value = "";
   $("#add-res").innerHTML = "";
   addResults = [];
@@ -1787,6 +1960,275 @@ function goBack() {
       break;
   }
 }
+const NTFY = (CFG.ntfy || "https://ntfy.sh").replace(/\/$/, "");
+const REMOTE_ON = !DEMO && CFG.remote !== false || QS.has("remote");
+let locked = !!store.get("locked", false);
+let lockMsg = store.get("lockMsg", "");
+function newRoom() {
+  const abc = "abcdefghijkmnpqrstuvwxyz23456789";
+  let out = "";
+  const r = new Uint8Array(20);
+  try {
+    window.crypto.getRandomValues(r);
+  } catch (e) {
+    for (let i = 0; i < r.length; i++) r[i] = Math.floor(Math.random() * 256);
+  }
+  for (let i = 0; i < r.length; i++) out += abc[r[i] % abc.length];
+  store.set("room", out);
+  return out;
+}
+let room = store.get("room", null) || newRoom();
+const topic = (k) => "farja-" + room + "-" + k;
+function remoteLink() {
+  const base = location.origin + location.pathname.replace(/[^\/]*$/, "");
+  return base + "parent.html#remote=" + room;
+}
+function statusObj() {
+  const v = current === "player" && curVid ? playList[playIdx] : null;
+  let pos = 0, dur = 0;
+  try {
+    if (v && player) {
+      pos = Math.floor(player.getCurrentTime() || 0);
+      dur = Math.floor(player.getDuration() || v.dur || 0);
+    }
+  } catch (e) {
+  }
+  const u = getUsage();
+  const state = locked ? "locked" : current === "player" ? pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
+  return {
+    v: 1,
+    t: Date.now(),
+    state,
+    screen: current,
+    video: v ? { id: v.id, title: v.title, ch: v.ch && v.ch.title || chs && chs.ch && chs.ch.title || "", thumb: v.thumb } : null,
+    pos,
+    dur,
+    watched: Math.floor(u.sec / 60),
+    left: limitOn() ? Math.ceil(remainingSec() / 60) : null,
+    limit: settings.dailyLimit || 0,
+    hasNext: !!(v && playList[playIdx + 1]),
+    recent: (typeof hist !== "undefined" ? hist : []).slice(0, 8).map((h) => ({ title: h.title, ch: h.ch && h.ch.title, at: h.seen || h.at, thumb: h.thumb }))
+  };
+}
+let lastSent = "";
+let lastSentAt = 0;
+let notifyT = null;
+function remoteNotify(force) {
+  if (!REMOTE_ON) return;
+  clearTimeout(notifyT);
+  notifyT = setTimeout(() => publishStatus(force), force ? 0 : 1500);
+}
+function publishStatus(force) {
+  const st = statusObj();
+  const key = JSON.stringify(Object.assign({}, st, { t: 0, pos: 0 }));
+  if (!force && key === lastSent && Date.now() - lastSentAt < 5 * 60 * 1e3) return;
+  if (!force && Date.now() - lastSentAt < 2500) {
+    remoteNotify();
+    return;
+  }
+  lastSent = key;
+  lastSentAt = Date.now();
+  try {
+    fetch(NTFY + "/" + topic("s"), { method: "POST", body: JSON.stringify(st) }).catch(() => {
+    });
+  } catch (e) {
+  }
+}
+const seenCmd = {};
+let cmdSource = null;
+function listenRemote() {
+  if (!REMOTE_ON || !window.EventSource) return;
+  try {
+    if (cmdSource) cmdSource.close();
+  } catch (e) {
+  }
+  cmdSource = new EventSource(NTFY + "/" + topic("c") + "/sse");
+  cmdSource.onmessage = (ev) => {
+    let m, c;
+    try {
+      m = JSON.parse(ev.data);
+      c = JSON.parse(m.message);
+    } catch (e) {
+      return;
+    }
+    if (!c || !c.cmd || seenCmd[c.id]) return;
+    seenCmd[c.id] = 1;
+    if (c.t && Math.abs(Date.now() - c.t) > 2 * 60 * 1e3) return;
+    onRemote(c);
+  };
+}
+function onRemote(c) {
+  const inPlayer = current === "player" && player;
+  switch (c.cmd) {
+    case "ping":
+      break;
+    case "pause":
+      if (inPlayer) {
+        try {
+          player.pauseVideo();
+        } catch (e) {
+        }
+        flash("pause");
+      }
+      break;
+    case "play":
+      if (inPlayer) {
+        try {
+          player.playVideo();
+        } catch (e) {
+        }
+        flash("play");
+      }
+      break;
+    case "next":
+      if (inPlayer && playList[playIdx + 1]) playAt(playIdx + 1);
+      break;
+    case "prev":
+      if (inPlayer && playIdx > 0) playAt(playIdx - 1);
+      break;
+    case "back10":
+      if (inPlayer) seekBy(-10);
+      break;
+    case "fwd10":
+      if (inPlayer) seekBy(10);
+      break;
+    case "stop":
+      if (current === "player") closePlayer();
+      break;
+    case "home":
+      if (current === "player") closePlayer();
+      if (!locked) {
+        show("home");
+        renderHome();
+        focusHome(true);
+      }
+      break;
+    case "lock":
+      setLocked(true, c.text || "");
+      break;
+    case "unlock":
+      setLocked(false);
+      toast("انفتح التلفزيون");
+      break;
+    case "close":
+      setLocked(false);
+      if (current === "player") closePlayer();
+      publishStatusClosed();
+      setTimeout(() => {
+        try {
+          if (window.webOS && window.webOS.platformBack) window.webOS.platformBack();
+          else window.close();
+        } catch (e) {
+        }
+      }, 400);
+      return;
+    case "addTime": {
+      const u = getUsage();
+      u.bonus += +c.n || 15;
+      u.warned = 0;
+      saveUsage();
+      if (current === "timeup") {
+        show("home");
+        renderHome();
+        focusHome(true);
+      }
+      showRemoteMsg("ماما وبابا عطوكم " + (+c.n || 15) + " دقيقة زيادة!");
+      break;
+    }
+    case "msg":
+      if (c.text) showRemoteMsg(String(c.text).slice(0, 140));
+      break;
+    case "search":
+      if (locked || !c.text) break;
+      if (current === "player") closePlayer();
+      openSearch();
+      srQuery = String(c.text).slice(0, 60);
+      updateSearchBox();
+      renderSearch();
+      $("#search-scroll").scrollTop = 0;
+      focusEl($("#sr-grid .v.f") || $(".kb-key[data-k]"));
+      showRemoteMsg("بحث من الموبايل: «" + srQuery + "»");
+      break;
+    case "speed":
+      if (inPlayer) cycleSpeed();
+      break;
+    case "cc":
+      if (inPlayer) toggleCaptions();
+      break;
+  }
+  remoteNotify(true);
+}
+function publishStatusClosed() {
+  try {
+    fetch(NTFY + "/" + topic("s"), { method: "POST", body: JSON.stringify({ v: 1, t: Date.now(), state: "closed" }) }).catch(() => {
+    });
+  } catch (e) {
+  }
+}
+function setLocked(on, msg) {
+  locked = !!on;
+  lockMsg = on ? msg || "" : "";
+  store.set("locked", locked);
+  store.set("lockMsg", lockMsg);
+  if (locked) {
+    if (current === "player") {
+      try {
+        player.pauseVideo();
+        player.stopVideo();
+      } catch (e) {
+      }
+      clearInterval(tickT);
+      clearInterval(guardT);
+      curVid = null;
+      hideOSD();
+      clearEnd();
+    }
+    $("#lock-msg").textContent = lockMsg || "خلّصنا فرجة هلّق. بنرجع بعدين!";
+    show("locked");
+    focusEl($('[data-act="lock-parent"]'));
+  } else if (current === "locked" || current === "pin") {
+    show("home");
+    renderHome();
+    focusHome(true);
+  }
+}
+let msgT = null;
+function showRemoteMsg(text) {
+  const el = $("#remote-msg");
+  $("#remote-msg-text").textContent = text;
+  el.classList.add("on");
+  clearTimeout(msgT);
+  msgT = setTimeout(() => el.classList.remove("on"), 9e3);
+}
+let qrLib = null;
+function loadQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  if (qrLib) return qrLib;
+  qrLib = new Promise((res, rej) => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
+    sc.onload = res;
+    sc.onerror = () => {
+      qrLib = null;
+      rej();
+    };
+    document.head.appendChild(sc);
+  });
+  return qrLib;
+}
+function renderPairing() {
+  const link = remoteLink();
+  $("#pair-code").textContent = room.slice(0, 5) + "-" + room.slice(5, 10) + "-" + room.slice(10, 15) + "-" + room.slice(15);
+  $("#pair-off").classList.toggle("hidden", REMOTE_ON);
+  loadQrLib().then(() => {
+    const q = window.qrcode(0, "M");
+    q.addData(link);
+    q.make();
+    $("#pair-qr").innerHTML = q.createImgTag(8, 8, "QR");
+  }).catch(() => {
+    $("#pair-qr").innerHTML = '<img src="parent-qr.svg" alt="">';
+  });
+}
 function onKey(e) {
   const code = e.keyCode;
   const t = document.activeElement;
@@ -1794,6 +2236,12 @@ function onKey(e) {
   if (current === "player") {
     e.preventDefault();
     playerKey(code);
+    return;
+  }
+  if (current === "locked") {
+    e.preventDefault();
+    if (code === 13 && t && t.classList.contains("f")) t.click();
+    else if (code >= 37 && code <= 40) moveFocus({ 37: "left", 38: "up", 39: "right", 40: "down" }[code]);
     return;
   }
   if (current === "pin") {
@@ -1808,7 +2256,7 @@ function onKey(e) {
       return;
     }
   }
-  if (current === "search") {
+  if (current === "search" && !inInput) {
     if (code === 8 && srQuery) {
       e.preventDefault();
       srQuery = srQuery.slice(0, -1);
@@ -1831,6 +2279,11 @@ function onKey(e) {
     if (code === 37 || code === 39) return;
     if (code === 13) {
       e.preventDefault();
+      if (current === "search") {
+        t.blur();
+        focusEl($("#sr-grid .v.f") || $(".kb-key[data-k]"));
+        return;
+      }
       addSearch();
       return;
     }
@@ -1850,8 +2303,24 @@ function onKey(e) {
 function onClick(e) {
   const b = e.target.closest("button, [data-act]");
   if (!b) return;
+  const act = b.getAttribute("data-act");
   if (b.id === "search-btn") {
     openSearch();
+    return;
+  }
+  if (act === "lock-parent") {
+    openPin({ done: () => setLocked(false), cancel: () => {
+      show("locked");
+      focusEl($('[data-act="lock-parent"]'));
+    } });
+    return;
+  }
+  if (b.id === "pair-new") {
+    room = newRoom();
+    renderPairing();
+    listenRemote();
+    remoteNotify(true);
+    toast("انعمل كود جديد. الموبايلات القديمة ما عادت تتحكم");
     return;
   }
   if (b.classList.contains("kb-key")) {
@@ -1865,7 +2334,6 @@ function onClick(e) {
     } });
     return;
   }
-  const act = b.getAttribute("data-act");
   if (act === "back") {
     goBack();
     return;
@@ -2048,8 +2516,24 @@ function init() {
   window.addEventListener("beforeunload", () => {
     if (usage) saveUsage();
   });
+  $("#sr-input").addEventListener("input", (e) => {
+    srQuery = e.target.value;
+    clearTimeout(srT);
+    srT = setTimeout(renderSearch, 160);
+  });
+  listenRemote();
+  setInterval(() => {
+    if (!document.hidden) remoteNotify(true);
+  }, 5 * 60 * 1e3);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      listenRemote();
+      remoteNotify(true);
+    }
+  });
   show("home");
   start();
+  if (locked) setLocked(true, lockMsg);
   if (!DEMO && CFG.apiKey) loadYTApi().catch(() => {
   });
 }

@@ -323,7 +323,9 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
   font-size: 3.6rem; font-weight: 800; text-align: center; box-shadow: 0 .6rem 0 rgba(20, 30, 110, .16); line-height: 1;
 }
 .kb-key svg { width: 4rem; height: 4rem; display: block; margin: 0 auto; }
-.kb-key.wide { width: 36.4rem; font-size: 2.8rem; }
+.kb-key.wide { width: 27.2rem; font-size: 2.8rem; }
+.kb-key.mic { background: var(--coral); color: var(--white); }
+.kb-key.mic:focus { background: var(--yellow); color: var(--navy); }
 .kb-key.wide2 { width: 54.4rem; font-size: 2.8rem; background: rgba(255, 255, 255, .75); }
 .kb-key.mode { width: 17.2rem; font-size: 2.8rem; background: var(--yellow); }
 .kb-ctrl { margin-top: .4rem; }
@@ -340,3 +342,34 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 .sr-empty { width: 100%; margin-left: 3.2rem; text-align: center; padding: 8rem 0; }
 .sr-empty svg { width: 16rem; height: 16rem; display: block; margin: 0 auto 2.4rem; animation: floaty 3s ease-in-out infinite; }
 .sr-empty p { font-size: 3.2rem; font-weight: 800; text-shadow: 0 .4rem 0 rgba(20, 30, 110, .2); }
+
+/* ---------- phone remote ---------- */
+#locked { background: linear-gradient(180deg, #3b3fa8 0%, #262467 60%, #1b1a4a 100%); z-index: 3; }
+.phone-card .qr { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.phone-card .qr img { width: 100%; height: 100%; image-rendering: pixelated; }
+.pair-info p { margin-top: 1rem !important; }
+.pair-info b { color: var(--navy) !important; letter-spacing: .1em; font-size: 2.6rem; }
+.pair-info .btn.ghost { font-size: 2.2rem; padding: 1rem 2.4rem .8rem; margin-top: 1.8rem; }
+.remote-msg {
+  position: fixed; top: 6rem; left: 50%; z-index: 60; width: 110rem; margin-left: -55rem; display: flex; align-items: center;
+  padding: 3.2rem 4rem; border-radius: 4rem; background: var(--white); color: var(--navy); box-shadow: 0 0 0 1rem var(--yellow), 0 3rem 6rem rgba(0, 0, 0, .35);
+  opacity: 0; transform: translateY(-4rem) scale(.95); transition: opacity .35s ease, transform .35s ease; pointer-events: none;
+}
+.remote-msg.on { opacity: 1; transform: none; }
+.remote-msg svg { width: 9rem; height: 9rem; margin-left: 3rem; flex-shrink: 0; }
+.remote-msg p { font-size: 4.4rem; font-weight: 800; line-height: 1.35; }
+
+/* ---------- voice / continue / favorites ---------- */
+.sr-text { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--navy); font-family: inherit; font-size: 3.6rem; font-weight: 800; padding: 0; }
+.sr-text::-webkit-input-placeholder { color: #a5a3cf; font-weight: 700; }
+.sr-box:focus-within { box-shadow: 0 0 0 .6rem var(--sky2), var(--toy); }
+.sr-voice { display: none; margin-right: 1.6rem; }
+.sr-voice.on { display: flex; align-items: center; }
+.sr-voice i { display: block; width: .9rem; height: 3.6rem; margin: 0 .3rem; border-radius: 1rem; background: var(--coral); animation: bounce .8s infinite ease-in-out; }
+.sr-voice i:nth-child(2) { animation-delay: .15s; }
+.sr-voice i:nth-child(3) { animation-delay: .3s; }
+.v .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 1rem; background: rgba(255, 255, 255, .55); }
+.v .prog i { display: block; height: 100%; background: var(--coral); border-radius: 0 1rem 1rem 0; }
+.osd-fav { display: none; color: var(--coral); margin-left: 1.6rem; }
+.osd-fav.on { display: inline; }
+.p-flash.heart { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21s-7.5-4.6-9.5-9.2C1 8.2 3.4 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.6 0 6 3.7 4.5 7.3C19.5 16.4 12 21 12 21z' fill='%23ff5d73'/%3E%3C/svg%3E"); background-color: var(--white); }
