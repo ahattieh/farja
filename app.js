@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.0.0";
+var VERSION = "2.1.0";
 const store = {
   get(k, d) {
     try {
@@ -778,7 +778,7 @@ function renderHome() {
   if (favChs.length) html = html.replace(/(<section class="hrow[^"]*"><h2>الجديد من قنواتكم)/, rowHTML("قنواتي المفضلة ❤", favChs.map((c) => chBubble(c, "fch")).join(""), "chans") + "$1");
   html += rowHTML("كل القنوات", channels.map((c) => chBubble(c, "ch")).join(""), "chans");
   favChs.concat(channels.filter((c) => !isFavCh(c.id))).forEach((c) => {
-    const list = visible(feedData[c.id] || []).slice(0, 12);
+    const list = visible(feedData[c.id] || []).slice(0, 12).map((v) => Object.assign({}, v, { ch: c }));
     if (!list.length) return;
     const key = "c:" + c.id;
     rowLists[key] = list;
@@ -1305,7 +1305,7 @@ function channelAllowed(id) {
   return !!id && channels.some((c) => c.id === id);
 }
 function videoChannelId(v) {
-  return v && v.ch && v.ch.id || playFrom === "channel" && chs && chs.ch && chs.ch.id || null;
+  return v && v.ch && v.ch.id || /^c:/.test(playFrom) && playFrom.slice(2) || playFrom === "channel" && chs && chs.ch && chs.ch.id || null;
 }
 function continueList() {
   return hist.filter((h) => channelAllowed(h.ch && h.ch.id) && h.pos > 20 && (!h.dur || h.pos < h.dur - 20)).slice(0, 12);
@@ -2185,6 +2185,7 @@ function statusObj() {
     left: limitOn() ? Math.ceil(remainingSec() / 60) : null,
     limit: settings.dailyLimit || 0,
     hasNext: !!(v && playList[playIdx + 1]),
+    chans: channels.slice(0, 40).map((c) => [c.id, c.title.slice(0, 40), c.uploads]),
     recent: (typeof hist !== "undefined" ? hist : []).slice(0, 8).map((h) => ({ title: h.title, ch: h.ch && h.ch.title, at: h.seen || h.at, thumb: h.thumb }))
   };
 }
@@ -2340,6 +2341,21 @@ function onRemote(c) {
       lastListLoad = 0;
       refreshChannelsSoon();
       break;
+    case "playVideo": {
+      if (locked) break;
+      const ch = channels.find((x) => x.id === c.ch);
+      if (!ch || !c.id) {
+        showRemoteMsg("هالفيديو مش من القنوات المسموحة");
+        break;
+      }
+      const v = { id: String(c.id), title: String(c.title || ""), thumb: c.thumb || "https://i.ytimg.com/vi/" + c.id + "/hqdefault.jpg", dur: +c.dur || 0, at: +c.at || 0, ch };
+      const rest = visible(feedData[ch.id] || []).filter((x) => x.id !== v.id).map((x) => Object.assign({}, x, { ch }));
+      if (current === "player") closePlayer();
+      playFrom = "remote";
+      playList = [v].concat(rest);
+      playAt(0);
+      break;
+    }
   }
   remoteNotify(true);
 }
@@ -2704,7 +2720,7 @@ function onClick(e) {
       playList = rowLists[row] || [];
     } else {
       playFrom = "channel";
-      playList = visible(activeSrc().all);
+      playList = visible(activeSrc().all).map((v) => v.ch ? v : Object.assign({}, v, { ch: chs.ch }));
     }
     playAt(+b.getAttribute("data-i"));
     return;

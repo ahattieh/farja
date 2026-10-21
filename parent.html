@@ -116,6 +116,12 @@
   .btn.mic.on { background: var(--coral); color: #fff; animation: pulse 1s infinite; }
   @keyframes pulse { 50% { transform: scale(1.08); } }
   html { background: #5b5bd6; }
+  .vid { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid #eceefe; }
+  .vid img { width: 112px; height: 63px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: #dfe2f7; }
+  .vid .info { flex: 1; min-width: 0; }
+  .vid b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; line-height: 1.4; }
+  .vid span { font-size: 12px; color: var(--muted); }
+  .vid .btn { padding: 10px 14px; }
   .small-link { background: none; color: var(--muted); font-size: 13px; padding: 10px 0 0; text-decoration: underline; }
   .btn[disabled] { opacity: .45; }
   .foot { text-align: center; font-size: 13px; padding-top: 6px; color: #fff !important; }
@@ -172,6 +178,13 @@
         <button class="btn" data-cmd="speed">السرعة</button>
         <button class="btn" data-cmd="cc">الترجمة</button>
       </div>
+      <h2 style="margin-top:18px">شغّل فيديو على التلفزيون</h2>
+      <form id="rc-play" class="rc-msg" autocomplete="off">
+        <input id="rc-play-in" class="inp" dir="ltr" enterkeyhint="go" placeholder="الصق رابط فيديو من يوتيوب">
+        <button class="btn primary" type="submit">شغّل</button>
+      </form>
+      <button id="rc-latest-btn" class="btn" style="width:100%;margin-top:10px">أو اختار من أحدث فيديوهات القنوات</button>
+      <div id="rc-latest" class="list"></div>
       <form id="rc-search" class="rc-msg" autocomplete="off">
         <button type="button" id="rc-mic" class="btn mic" aria-label="بحث بالصوت"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
         <input id="rc-search-in" class="inp" maxlength="60" dir="auto" enterkeyhint="search" placeholder="ابحث على التلفزيون…">
@@ -505,7 +518,7 @@
     var s = Math.round(ms / 1000);
     if (s < 60) return 'هلّق';
     var m = Math.round(s / 60);
-    return m < 60 ? 'قبل ' + m + ' د' : 'قبل ' + Math.round(m / 60) + ' س';
+    if (m < 60) return 'قبل ' + m + ' د'; var h = Math.round(m / 60); if (h < 24) return 'قبل ' + h + ' س'; var d = Math.round(h / 24); return d < 2 ? 'مبارح' : d < 30 ? 'قبل ' + d + ' يوم' : 'قبل ' + Math.round(d / 30) + ' شهر';
   }
   function fmt(t) { t = Math.max(0, Math.floor(t)); var m = Math.floor(t / 60), x = t % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
   var LABEL = { ad: 'إعلان', playing: 'عم يشتغل', paused: 'موقّف مؤقتاً', loading: 'عم يحمّل', browsing: 'عم يتصفح القوائم', timeup: 'خلص وقت اليوم', locked: 'مقفول', closed: 'التطبيق مسكّر', off: 'ما في اتصال' };
@@ -591,6 +604,57 @@
     var t = $('#rc-msg-in').value.trim();
     if (!t) return;
     send('msg', { text: t }).then(function () { $('#rc-msg-in').value = ''; toast('الرسالة طلعت على التلفزيون'); }).catch(function () { toast('ما انبعتت'); });
+  });
+
+
+  /* play a video on the TV (only from the TV's approved channels) */
+  function ytDur(iso) { var m = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso || '') || []; return (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0); }
+  function approved(chId) { return !!(st && st.chans && st.chans.some(function (c) { return c[0] === chId; })); }
+  function playOnTv(v) {
+    if (!st || !st.chans) { toast('التلفزيون مش متصل هلّق'); return Promise.resolve(); }
+    if (!approved(v.ch)) { toast('هالفيديو مش من القنوات المسموحة على التلفزيون'); return Promise.resolve(); }
+    return send('playVideo', v).then(function () { toast('عم يشتغل على التلفزيون ▶'); }).catch(function () { toast('ما انبعت'); });
+  }
+  $('#rc-play').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var q = $('#rc-play-in').value.trim();
+    var m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/live\/|\/embed\/)([\w-]{11})/.exec(q) || (/^[\w-]{11}$/.test(q) ? [0, q] : null);
+    if (!m) { toast('هاد مش رابط فيديو'); return; }
+    $('#rc-play-in').blur();
+    yt('videos', { part: 'snippet,contentDetails,status', id: m[1] }).then(function (j) {
+      var it = j.items && j.items[0];
+      if (!it) { toast('ما لقيت الفيديو'); return; }
+      if (it.status && it.status.embeddable === false) { toast('صاحب الفيديو ما بيسمح يشتغل برّا يوتيوب'); return; }
+      var th = it.snippet.thumbnails || {};
+      return playOnTv({ id: it.id, title: it.snippet.title, ch: it.snippet.channelId, thumb: (th.high || th.medium || th.default || {}).url, dur: ytDur(it.contentDetails.duration), at: Date.parse(it.snippet.publishedAt) || 0 })
+        .then(function () { $('#rc-play-in').value = ''; });
+    }).catch(function (err) { toast(err.message); });
+  });
+  var latest = [];
+  $('#rc-latest-btn').addEventListener('click', function () {
+    var box = $('#rc-latest');
+    if (!st || !st.chans || !st.chans.length) { toast('التلفزيون مش متصل هلّق'); return; }
+    box.innerHTML = '<p class="msg"><span class="dots"><i></i><i></i><i></i></span></p>';
+    var chans = st.chans.slice(0, 15);
+    Promise.all(chans.map(function (c) {
+      return yt('playlistItems', { part: 'snippet', playlistId: c[2], maxResults: 4 }).then(function (j) {
+        return (j.items || []).map(function (i) { var sn = i.snippet, th = sn.thumbnails || {}; return { id: sn.resourceId && sn.resourceId.videoId, title: sn.title, ch: c[0], chTitle: c[1], thumb: (th.medium || th.default || {}).url, at: Date.parse(sn.publishedAt) || 0 }; });
+      }).catch(function () { return []; });
+    })).then(function (lists) {
+      latest = [].concat.apply([], lists).filter(function (v) { return v.id && v.title !== 'Private video' && v.title !== 'Deleted video'; });
+      latest.sort(function (a, b) { return b.at - a.at; });
+      latest = latest.slice(0, 30);
+      box.innerHTML = latest.length ? latest.map(function (v, i) {
+        return '<div class="vid"><img src="' + esc(v.thumb) + '" alt=""><div class="info"><b dir="auto">' + esc(v.title) + '</b><span>' + esc(v.chTitle) + ' · ' + ago(Date.now() - v.at) + '</span></div><button class="btn primary" data-play="' + i + '">▶</button></div>';
+      }).join('') : '<p class="msg muted">ما لقيت فيديوهات.</p>';
+    });
+  });
+  $('#rc-latest').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-play]');
+    if (!b) return;
+    var v = latest[+b.getAttribute('data-play')];
+    b.disabled = true;
+    playOnTv({ id: v.id, title: v.title, ch: v.ch, thumb: v.thumb, at: v.at }).then(function () { setTimeout(function () { b.disabled = false; }, 1500); });
   });
 
   /* search on the TV, by typing or by voice */
