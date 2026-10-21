@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.6.0";
+var VERSION = "1.7.0";
 const store = {
   get(k, d) {
     try {
@@ -1616,25 +1616,54 @@ function resetAdWatch() {
   adFrozenAt = 0;
   setAd(false);
 }
-function watchForAd() {
-  if (pState !== 1) {
-    adFrozenAt = 0;
-    return;
-  }
-  let t;
+function adSignals() {
+  let t = 0, d = 0;
   try {
-    t = player.getCurrentTime();
+    t = player.getCurrentTime() || 0;
+    d = player.getDuration() || 0;
   } catch (e) {
-    return;
   }
-  if (Math.abs(t - adLastT) < 0.05) {
-    if (!adFrozenAt) adFrozenAt = Date.now();
-    else if (!adMode && Date.now() - adFrozenAt > 2e3) setAd(true);
-  } else {
-    if (adLastT >= 0 && adMode) setAd(false);
+  const exp = (playList[playIdx] || {}).dur || 0;
+  return { t, d, exp, durMismatch: !!(exp && d > 1 && Math.abs(d - exp) > 3) };
+}
+function watchForAd() {
+  if (pState !== 1 && pState !== 3) {
     adFrozenAt = 0;
-    adLastT = t;
+    if (pState === 2 || pState === 0) return;
   }
+  const g = adSignals();
+  let frozen = false;
+  if (pState === 1) {
+    if (Math.abs(g.t - adLastT) < 0.05) {
+      if (!adFrozenAt) adFrozenAt = Date.now();
+      else if (Date.now() - adFrozenAt > 2e3) frozen = true;
+    } else {
+      adFrozenAt = 0;
+      adLastT = g.t;
+    }
+  }
+  const isAd = g.durMismatch || frozen;
+  if (isAd && !adMode) setAd(true);
+  else if (!isAd && adMode && !g.durMismatch && adFrozenAt === 0) setAd(false);
+  if (dbgOn) renderDebug(g);
+}
+let dbgOn = false, dbgKeys = [];
+function toggleDebug() {
+  dbgOn = !dbgOn;
+  $("#dbg").classList.toggle("hidden", !dbgOn);
+  if (dbgOn) renderDebug(adSignals());
+}
+function renderDebug(g) {
+  let vd = {}, dt = "";
+  try {
+    vd = player.getVideoData() || {};
+  } catch (e) {
+  }
+  try {
+    dt = player.getDebugText ? String(player.getDebugText()).slice(0, 400) : "";
+  } catch (e) {
+  }
+  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  durMismatch=" + g.durMismatch + "\nexpected id=" + curVid + "  reported id=" + vd.video_id + "\ntitle=" + (vd.title || "") + "  author=" + (vd.author || "") + "\n" + dt;
 }
 let adMuted = false;
 function setAd(on) {
@@ -1744,6 +1773,15 @@ function toggleCaptions() {
   toast(ccOn ? "الترجمة: شغّالة (إذا متوفرة للفيديو)" : "الترجمة: مطفية");
 }
 function playerKey(code) {
+  if (code === 48 || code === 96) {
+    const now = Date.now();
+    dbgKeys = dbgKeys.filter((x) => now - x < 1500).concat(now);
+    if (dbgKeys.length >= 3) {
+      dbgKeys = [];
+      toggleDebug();
+    }
+    return;
+  }
   if (endT) {
     if (code === 13 || code === 415 || code === 32) {
       clearEnd();
@@ -2222,6 +2260,9 @@ function onRemote(c) {
       break;
     case "cc":
       if (inPlayer) toggleCaptions();
+      break;
+    case "debug":
+      toggleDebug();
       break;
   }
   remoteNotify(true);
