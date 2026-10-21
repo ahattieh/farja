@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#5cc8ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="قنوات الفرجة">
+<link rel="apple-touch-icon" href="icon.png">
+<title>قنوات صندوق الفرجة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2f5ff; --navy: #1f1d5a; --card: #ffffff; --card2: #d9dcf5;
+    --ink: #1f1d5a; --muted: #6d6aa8; --accent: #ffd23f; --coral: #ff5d73; --teal: #2ec98b;
+    --font: 'Baloo Bhaijaan 2', -apple-system, 'Geeza Pro', 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font-family: var(--font); color: var(--ink); min-height: 100vh;
+    background: linear-gradient(180deg, #5cc8ff 0%, #3a86ff 55%, #5b5bd6 100%) fixed;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  button, input { font-family: inherit; color: inherit; font-size: 16px; }
+  button { cursor: pointer; border: 0; }
+  h1, h2, p { margin: 0; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 800; color: #fff; text-shadow: 0 3px 0 rgba(20,30,110,.25); }
+  .brand b { color: var(--accent); }
+  .brand svg { width: 38px; height: 38px; }
+  .link-btn { background: rgba(20,30,110,.22); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 99px; }
+
+  .card { background: var(--card); border-radius: 26px; padding: 20px; margin-bottom: 16px; box-shadow: 0 6px 0 rgba(20,30,110,.18); }
+  .card h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .card > p { font-size: 15px; line-height: 1.6; margin-bottom: 14px; }
+  .count { font-size: 14px; color: #fff; background: var(--teal); border-radius: 99px; padding: 0 10px; }
+
+  .row-in { display: flex; gap: 8px; }
+  .inp {
+    flex: 1; min-width: 0; padding: 13px 16px; border-radius: 14px; border: 0; background: var(--bg); color: var(--navy);
+    box-shadow: inset 0 0 0 2px var(--card2); font-size: 17px; font-weight: 600; outline: none;
+  }
+  .inp:focus { box-shadow: inset 0 0 0 3px #3a86ff; background: #fff; }
+  .inp::placeholder { color: #a5a3cf; font-weight: 500; }
+  .btn { padding: 12px 18px; border-radius: 14px; font-weight: 800; background: var(--bg); color: var(--navy); white-space: nowrap; box-shadow: 0 4px 0 rgba(20,30,110,.14); }
+  .btn.primary { background: var(--accent); color: var(--navy); }
+  .btn.danger { background: #ffe3e7; color: #d6304a; }
+  .btn.done { background: #dcf7ec; color: #17935f; }
+  .btn:active { transform: scale(.97); }
+  .btn[disabled] { opacity: .6; }
+
+  .list { margin-top: 14px; }
+  .item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #eceefe; }
+  .item:first-child { border-top: 0; }
+  .item img { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; background: var(--bg); flex-shrink: 0; border: 3px solid var(--accent); }
+  .item .info { flex: 1; min-width: 0; }
+  .item b { display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item span { font-size: 13px; color: var(--muted); }
+  .msg { font-size: 15px; padding: 10px 0 0; }
+  .msg.bad { color: #d6304a; }
+
+  details { margin-top: 12px; font-size: 14px; line-height: 1.7; }
+  summary { cursor: pointer; color: #3a86ff; font-weight: 700; }
+  ol { padding-right: 20px; margin: 8px 0 0; }
+  code { direction: ltr; unicode-bidi: embed; background: var(--bg); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+
+  .dots i { display: inline-block; width: 9px; height: 9px; margin: 0 3px; border-radius: 50%; background: var(--accent); animation: b 1s infinite ease-in-out; }
+  .dots i:nth-child(2) { animation-delay: .15s; background: var(--coral); }
+  .dots i:nth-child(3) { animation-delay: .3s; background: var(--teal); }
+  @keyframes b { 0%,80%,100% { transform: translateY(0); opacity: .6; } 40% { transform: translateY(-6px); opacity: 1; } }
+
+  .toast {
+    position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 16px); opacity: 0;
+    background: var(--navy); color: #fff; font-weight: 800; padding: 12px 22px; border-radius: 99px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); transition: opacity .25s, transform .25s; pointer-events: none; white-space: nowrap;
+  }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  .foot { text-align: center; font-size: 13px; padding-top: 6px; color: #fff !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="10" width="56" height="46" rx="14" fill="#ffb547"/><path d="M4 24 Q18 22 22 10 L4 10Z" fill="#ff6f61"/><path d="M60 24 Q46 22 42 10 L60 10Z" fill="#ff6f61"/><path d="M27 26 L42 35 L27 44Z" fill="#1b1433"/></svg>
+      <span>قنوات <b>الفرجة</b></span>
+    </div>
+    <button id="logout" class="link-btn hidden">خروج</button>
+  </header>
+
+  <!-- login -->
+  <section id="login" class="card hidden">
+    <h2>منطقة الأهل</h2>
+    <p class="muted">أدخل كلمة السر (مفتاح GitHub) مرة وحدة، وبتنحفظ على هالموبايل بس.</p>
+    <div class="row-in">
+      <input id="token" class="inp" type="password" dir="ltr" autocomplete="current-password" placeholder="github_pat_…">
+      <button id="login-btn" class="btn primary">دخول</button>
+    </div>
+    <p id="login-msg" class="msg hidden"></p>
+    <details>
+      <summary>من وين بجيب كلمة السر؟</summary>
+      <ol>
+        <li>افتح <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" style="color:#3a86ff">صفحة إنشاء Token على GitHub</a>.</li>
+        <li><b>Token name:</b> اكتب <code>farja</code>. و <b>Expiration:</b> اختار <code>No expiration</code> أو أطول مدة.</li>
+        <li><b>Repository access:</b> اختار <code>Only select repositories</code> ثم <code id="repo-name">farja</code>.</li>
+        <li><b>Permissions → Repository permissions → Contents:</b> اختار <code>Read and write</code>.</li>
+        <li>اضغط <b>Generate token</b> وانسخه والصقه هون.</li>
+      </ol>
+    </details>
+  </section>
+
+  <!-- main -->
+  <div id="main" class="hidden">
+    <section class="card">
+      <h2>إضافة قناة</h2>
+      <p class="muted">اكتب اسم القناة، أو الصق رابطها (من تطبيق يوتيوب: مشاركة ← نسخ الرابط).</p>
+      <form id="search-form" class="row-in" autocomplete="off">
+        <input id="q" class="inp" type="search" dir="auto" enterkeyhint="search" placeholder="مثلاً: Wolfoo عربي">
+        <button class="btn primary" type="submit">ابحث</button>
+      </form>
+      <div id="results" class="list"></div>
+    </section>
+
+    <section class="card">
+      <h2>القنوات المسموحة <span id="count" class="count">0</span></h2>
+      <div id="list" class="list"><p class="msg"><span class="dots"><i></i><i></i><i></i></span></p></div>
+    </section>
+
+    <p class="foot muted">التلفزيون بيشوف التغييرات خلال دقيقة تقريباً، أو لما يرجع للصفحة الرئيسية.</p>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var CFG = window.FARJA_CONFIG || {};
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var TKEY = 'farja.ghToken';
+
+  function repoName() {
+    if (CFG.githubRepo) return CFG.githubRepo;
+    var m = /^([^.]+)\.github\.io$/.exec(location.hostname);
+    var repo = location.pathname.split('/').filter(Boolean)[0];
+    return m && repo ? m[1] + '/' + repo : null;
+  }
+  var REPO = repoName();
+  if (REPO) $('#repo-name').textContent = REPO.split('/')[1];
+
+  var toastT;
+  function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('on'); }, 2400); }
+  function fmtCount(n) { n = +n || 0; if (n >= 1e6) return (Math.round(n / 1e5) / 10) + ' مليون'; if (n >= 1e3) return (Math.round(n / 100) / 10) + ' ألف'; return String(n); }
+  var LOADING = '<p class="msg"><span class="dots"><i></i><i></i><i></i></span></p>';
+
+  /* ---------- YouTube ---------- */
+  async function yt(path, params) {
+    if (!CFG.apiKey) throw new Error('مفتاح YouTube API ناقص بملف config.js');
+    var u = new URL('https://www.googleapis.com/youtube/v3/' + path);
+    Object.keys(params).forEach(function (k) { if (params[k] != null) u.searchParams.set(k, params[k]); });
+    u.searchParams.set('key', CFG.apiKey);
+    var r = await fetch(u.toString());
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      var reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
+      if (reason === 'quotaExceeded') throw new Error('خلصت حصة يوتيوب لليوم، جرّب بكرة.');
+      throw new Error('خطأ من يوتيوب: ' + ((j.error && j.error.message) || r.status));
+    }
+    return j;
+  }
+  function toChannel(it) {
+    var sn = it.snippet || {}, st = it.statistics || {}, th = sn.thumbnails || {};
+    var rel = (it.contentDetails && it.contentDetails.relatedPlaylists) || {};
+    return {
+      id: it.id, title: sn.title || '',
+      thumb: (th.medium || th.high || th.default || {}).url || '',
+      uploads: rel.uploads || ('UU' + it.id.slice(2)),
+      subs: st.hiddenSubscriberCount ? null : st.subscriberCount, videos: st.videoCount,
+    };
+  }
+  async function channelsBy(params) {
+    params.part = 'snippet,contentDetails,statistics';
+    var j = await yt('channels', params);
+    return (j.items || []).map(toChannel);
+  }
+  async function findChannels(q) {
+    q = q.trim();
+    var m;
+    if ((m = /(UC[\w-]{22})(?![\w-])/.exec(q))) return channelsBy({ id: m[1] });
+    if ((m = /@([^\/?#\s]+)/.exec(q))) return channelsBy({ forHandle: '@' + decodeURIComponent(m[1]) });
+    if ((m = /youtube\.com\/user\/([^\/?#\s]+)/i.exec(q))) return channelsBy({ forUsername: decodeURIComponent(m[1]) });
+    if ((m = /(?:youtu\.be\/|[?&]v=|\/shorts\/)([\w-]{11})/.exec(q))) {
+      // a video link: add the channel that posted it
+      var vj = await yt('videos', { part: 'snippet', id: m[1] });
+      var cid = vj.items && vj.items[0] && vj.items[0].snippet.channelId;
+      return cid ? channelsBy({ id: cid }) : [];
+    }
+    if ((m = /youtube\.com\/c\/([^\/?#\s]+)/i.exec(q))) q = decodeURIComponent(m[1]);
+    var sj = await yt('search', { part: 'snippet', type: 'channel', q: q, maxResults: 8 });
+    var ids = (sj.items || []).map(function (h) { return (h.snippet && h.snippet.channelId) || (h.id && h.id.channelId); }).filter(Boolean);
+    if (!ids.length) return [];
+    var list = await channelsBy({ id: ids.join(',') });
+    var by = {}; list.forEach(function (c) { by[c.id] = c; });
+    return ids.map(function (id) { return by[id]; }).filter(Boolean);
+  }
+
+  /* ---------- GitHub (channels.json) ---------- */
+  var token = localStorage.getItem(TKEY) || '';
+  var file = { sha: null, data: { channels: [] } };
+
+  async function gh(method, path, body) {
+    var r = await fetch('https://api.github.com/repos/' + REPO + path, {
+      method: method,
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { var e = new Error(j.message || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+    return j;
+  }
+  function b64decode(s) { return decodeURIComponent(escape(atob(s.replace(/\s/g, '')))); }
+  function b64encode(s) { return btoa(unescape(encodeURIComponent(s))); }
+
+  async function loadFile() {
+    try {
+      var j = await gh('GET', '/contents/channels.json?ref=main&t=' + Date.now());
+      file.sha = j.sha;
+      var data = JSON.parse(b64decode(j.content || '') || '{}');
+      if (Array.isArray(data)) data = { channels: data };
+      if (!Array.isArray(data.channels)) data.channels = [];
+      file.data = data;
+    } catch (e) {
+      if (e.status === 404) { file.sha = null; file.data = { channels: [] }; } else throw e;
+    }
+  }
+  async function saveFile(message, change) {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await loadFile();
+      change(file.data.channels);
+      try {
+        var body = { message: message, content: b64encode(JSON.stringify(file.data, null, 2) + '\n'), branch: 'main' };
+        if (file.sha) body.sha = file.sha;
+        var res = await gh('PUT', '/contents/channels.json', body);
+        file.sha = res.content && res.content.sha;
+        return;
+      } catch (e) {
+        if (e.status !== 409 || attempt) throw e; // someone else saved first: reload and retry once
+      }
+    }
+  }
+  const idOf = function (x) { return x && typeof x === 'object' ? (x.id || x.handle || x.url) : x; };
+
+  /* ---------- UI ---------- */
+  function renderList() {
+    var list = file.data.channels;
+    $('#count').textContent = list.length;
+    if (!list.length) { $('#list').innerHTML = '<p class="msg muted">ما في قنوات لسا. ابحث فوق وضيف أول قناة.</p>'; return; }
+    $('#list').innerHTML = list.map(function (x, i) {
+      var o = typeof x === 'object' && x ? x : { title: x };
+      return '<div class="item"><img src="' + esc(o.thumb || 'icon.png') + '" alt=""><div class="info"><b dir="auto">' + esc(o.title || o.id) + '</b>' +
+        (o.title && o.id ? '' : '<span>من ملف القنوات</span>') + '</div><button class="btn danger" data-del="' + i + '">حذف</button></div>';
+    }).join('');
+  }
+  var results = [];
+  function renderResults() {
+    var have = {};
+    file.data.channels.forEach(function (x) { have[idOf(x)] = 1; });
+    $('#results').innerHTML = results.map(function (c, i) {
+      var meta = [c.subs ? fmtCount(c.subs) + ' مشترك' : '', c.videos ? fmtCount(c.videos) + ' فيديو' : ''].filter(Boolean).join(' · ');
+      return '<div class="item"><img src="' + esc(c.thumb) + '" alt=""><div class="info"><b dir="auto">' + esc(c.title) + '</b><span>' + meta + '</span></div>' +
+        (have[c.id] ? '<button class="btn done" disabled>مضافة ✓</button>' : '<button class="btn primary" data-add="' + i + '">أضف</button>') + '</div>';
+    }).join('');
+  }
+
+  async function showMain() {
+    $('#login').classList.add('hidden');
+    $('#main').classList.remove('hidden');
+    $('#logout').classList.remove('hidden');
+    try { await loadFile(); renderList(); }
+    catch (e) {
+      if (e.status === 401 || e.status === 403) { logout('كلمة السر انتهت أو ما إلها صلاحية. أدخلها من جديد.'); return; }
+      $('#list').innerHTML = '<p class="msg bad">' + esc(e.message) + '</p>';
+    }
+  }
+  function logout(msg) {
+    localStorage.removeItem(TKEY); token = '';
+    $('#main').classList.add('hidden'); $('#logout').classList.add('hidden');
+    $('#login').classList.remove('hidden');
+    var m = $('#login-msg');
+    if (msg) { m.textContent = msg; m.className = 'msg bad'; } else m.className = 'msg hidden';
+  }
+
+  $('#login-btn').addEventListener('click', async function () {
+    var t = $('#token').value.trim();
+    var m = $('#login-msg');
+    if (!t) return;
+    if (!REPO) { m.textContent = 'هالصفحة لازم تنفتح من رابط GitHub Pages.'; m.className = 'msg bad'; return; }
+    m.innerHTML = LOADING; m.className = 'msg';
+    token = t;
+    try {
+      var repo = await gh('GET', '');
+      if (!repo.permissions || !repo.permissions.push) throw Object.assign(new Error('nopush'), { status: 403 });
+      localStorage.setItem(TKEY, t);
+      $('#token').value = '';
+      showMain();
+    } catch (e) {
+      token = '';
+      m.textContent = e.status === 401 ? 'كلمة السر غلط.' : e.status === 403 || e.status === 404
+        ? 'كلمة السر صحيحة بس ما إلها صلاحية الكتابة على ' + REPO + ' (Contents: Read and write).'
+        : 'ما قدرت أتأكد: ' + e.message;
+      m.className = 'msg bad';
+    }
+  });
+  $('#token').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('#login-btn').click(); });
+  $('#logout').addEventListener('click', function () { logout(); });
+
+  $('#search-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var q = $('#q').value.trim();
+    if (!q) return;
+    $('#q').blur();
+    $('#results').innerHTML = LOADING;
+    try {
+      results = await findChannels(q);
+      if (!results.length) { $('#results').innerHTML = '<p class="msg bad">ما لقيت قنوات بهالاسم.</p>'; return; }
+      renderResults();
+    } catch (err) {
+      $('#results').innerHTML = '<p class="msg bad">' + esc(err.message) + '</p>';
+    }
+  });
+
+  $('#results').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-add]');
+    if (!b) return;
+    var c = results[+b.getAttribute('data-add')];
+    b.disabled = true; b.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+    try {
+      await saveFile('Add channel: ' + c.title, function (list) {
+        if (!list.some(function (x) { return idOf(x) === c.id; })) list.push({ id: c.id, title: c.title, thumb: c.thumb, uploads: c.uploads });
+      });
+      renderList(); renderResults();
+      toast('انضافت «' + c.title + '»');
+    } catch (err) {
+      b.disabled = false; b.textContent = 'أضف';
+      toast('ما انحفظت: ' + err.message);
+    }
+  });
+
+  $('#list').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-del]');
+    if (!b) return;
+    var x = file.data.channels[+b.getAttribute('data-del')];
+    var id = idOf(x);
+    var name = (x && x.title) || id;
+    if (!confirm('أحذف «' + name + '» من القنوات المسموحة؟')) return;
+    b.disabled = true;
+    try {
+      await saveFile('Remove channel: ' + name, function (list) {
+        for (var i = list.length - 1; i >= 0; i--) if (idOf(list[i]) === id) list.splice(i, 1);
+      });
+      renderList(); renderResults();
+      toast('انحذفت «' + name + '»');
+    } catch (err) {
+      b.disabled = false;
+      toast('ما انحذفت: ' + err.message);
+    }
+  });
+
+  if (token && REPO) showMain(); else logout();
+})();
+</script>
+</body>
+</html>

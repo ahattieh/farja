@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.0.0";
+var VERSION = "1.1.0";
 const store = {
   get(k, d) {
     try {
@@ -185,6 +185,19 @@ const realApi = {
       return j2.items && j2.items.length ? toChannel(j2.items[0]) : null;
     });
   },
+  search(q) {
+    return __async(this, null, function* () {
+      const sj = yield yt("search", { part: "snippet", type: "channel", q, maxResults: 6 });
+      const ids = (sj.items || []).map((h) => h.snippet && h.snippet.channelId || h.id && h.id.channelId).filter(Boolean);
+      if (!ids.length) return [];
+      const j = yield yt("channels", { part: "snippet,contentDetails,statistics", id: ids.join(",") });
+      const by = {};
+      (j.items || []).forEach((it) => {
+        by[it.id] = toChannel(it);
+      });
+      return ids.map((id) => by[id]).filter(Boolean);
+    });
+  },
   // One page of a channel's uploads, with durations and embeddability.
   videos(ch, pageToken) {
     return __async(this, null, function* () {
@@ -209,7 +222,8 @@ const realApi = {
           id,
           title: sn.title || "",
           thumb: pickThumb(sn.thumbnails, ["high", "medium", "standard", "default"]),
-          dur: parseISODur(v.contentDetails && v.contentDetails.duration)
+          dur: parseISODur(v.contentDetails && v.contentDetails.duration),
+          at: Date.parse(sn.publishedAt) || 0
         });
       });
       return { videos, next: pl.nextPageToken || null };
@@ -267,6 +281,13 @@ const demoApi = {
       return { id: "UCdemo-" + s, title: s, thumb: demoAvatar(hue, s.charAt(0).toUpperCase()), uploads: "UUdemo-" + s, hue, subs: 3200 };
     });
   },
+  search(q) {
+    return __async(this, null, function* () {
+      const out = [];
+      for (let i = 0; i < 3; i++) out.push(yield demoApi.resolve(q + (i ? " " + (i + 1) : "")));
+      return out.filter(Boolean);
+    });
+  },
   videos(ch, pageToken) {
     return __async(this, null, function* () {
       yield new Promise((r) => setTimeout(r, 450));
@@ -279,7 +300,8 @@ const demoApi = {
           id: ch.id + "-v" + n,
           title: DEMO_TITLES[n % DEMO_TITLES.length] + (n >= DEMO_TITLES.length ? " (" + (Math.floor(n / DEMO_TITLES.length) + 1) + ")" : ""),
           thumb: demoThumb(hue, n),
-          dur: n % 5 === 3 ? 45 : 25 + n * 97 % 600
+          dur: n % 5 === 3 ? 45 : 25 + n * 97 % 600,
+          at: Date.now() - (n * 2 + hue % 7) * 36e5 * 9
         });
       }
       return { videos, next: page < 2 ? String(page + 1) : null };
@@ -298,14 +320,48 @@ function tvChannels() {
 function removedIds() {
   return store.get("removed", []);
 }
+function ghRepo() {
+  if (CFG.githubRepo) return CFG.githubRepo;
+  const m = /^([^.]+)\.github\.io$/.exec(location.hostname);
+  const repo = location.pathname.split("/").filter(Boolean)[0];
+  return m && repo ? m[1] + "/" + repo : null;
+}
+function parseRemote(j) {
+  const list = [];
+  (Array.isArray(j) ? j : j && j.channels || []).forEach((x) => {
+    if (x && typeof x === "object") {
+      const id = String(x.id || x.handle || x.url || "").trim();
+      if (!id) return;
+      if (/^UC[\w-]{22}$/.test(id) && x.title && x.thumb) {
+        resolved[id] = { ch: { id, title: x.title, thumb: x.thumb, uploads: x.uploads || "UU" + id.slice(2) }, at: Date.now() };
+      }
+      list.push(id);
+    } else if (x) list.push(String(x).trim());
+  });
+  return list;
+}
 function fetchRemoteList() {
   return __async(this, null, function* () {
     if (DEMO) return DEMO_CH.map((c) => c[0]);
+    const repo = ghRepo();
+    if (repo) {
+      try {
+        const r = yield fetch("https://api.github.com/repos/" + repo + "/contents/channels.json?t=" + Date.now(), {
+          headers: { Accept: "application/vnd.github.raw+json" },
+          cache: "no-store"
+        });
+        if (r.ok) {
+          const list = parseRemote(yield r.json());
+          store.set("remoteCopy", list);
+          return list;
+        }
+      } catch (e) {
+      }
+    }
     try {
       const r = yield fetch("channels.json?t=" + Date.now(), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
-      const j = yield r.json();
-      const list = (Array.isArray(j) ? j : j.channels || []).map((x) => String(typeof x === "object" && x ? x.id || x.handle || x.url || "" : x).trim()).filter(Boolean);
+      const list = parseRemote(yield r.json());
       store.set("remoteCopy", list);
       return list;
     } catch (e) {
@@ -369,12 +425,12 @@ function rebuildChannelsLocal() {
 const VIDEO_TTL = 30 * 60 * 1e3;
 const vMem = {};
 function getCached(chId) {
-  const c = vMem[chId] || store.get("vc." + chId, null);
+  const c = vMem[chId] || store.get("vc2." + chId, null);
   return c && Date.now() - c.at < VIDEO_TTL ? c : null;
 }
 function putCached(chId, data) {
   vMem[chId] = data;
-  store.set("vc." + chId, { at: data.at, videos: data.videos.slice(0, 50), next: data.videos.length > 50 ? null : data.next });
+  store.set("vc2." + chId, { at: data.at, videos: data.videos.slice(0, 50), next: data.videos.length > 50 ? null : data.next });
 }
 const visible = (list) => list.filter((v) => !(settings.hideShorts && v.dur > 0 && v.dur <= 60));
 const LIMITS = [0, 15, 30, 45, 60, 90, 120, 180];
@@ -478,9 +534,31 @@ function focusEl(el) {
   }
   ensureVisible(el);
 }
+let remPx = 10;
+function slideRow(el) {
+  const track = el.closest(".hrow-track");
+  if (!track) return;
+  const item = el.parentNode === track ? el : el.closest(".hrow-track > *");
+  const w = track.clientWidth;
+  const pad = 2.4 * remPx;
+  let tx = +track.getAttribute("data-tx") || 0;
+  const left = item.offsetLeft, right = left + item.offsetWidth;
+  if (left < -tx + pad) tx = pad - left;
+  else if (right > -tx + w - pad) tx = w - pad - right;
+  if (item === track.firstElementChild || tx < 0) tx = 0;
+  track.setAttribute("data-tx", tx);
+  track.style.transform = "translateX(" + tx + "px)";
+  track.style.webkitTransform = "translateX(" + tx + "px)";
+}
 function ensureVisible(el) {
+  slideRow(el);
   const sc = el.closest(".scroll");
   if (!sc) return;
+  const firstRow = sc.querySelector(".hrow");
+  if (firstRow && firstRow.contains(el)) {
+    sc.scrollTop = 0;
+    return;
+  }
   const er = el.getBoundingClientRect();
   const sr = sc.getBoundingClientRect();
   const pad = sr.height * 0.14;
@@ -531,6 +609,83 @@ function moveFocus(dir) {
   if (best) focusEl(best);
 }
 const EMPTY_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="14" width="56" height="42" rx="12" fill="var(--card2)"/><path d="M4 26 Q18 24 22 14 L4 14Z" fill="var(--coral)" opacity=".8"/><path d="M60 26 Q46 24 42 14 L60 14Z" fill="var(--coral)" opacity=".8"/><circle cx="25" cy="36" r="3" fill="var(--ink)"/><circle cx="39" cy="36" r="3" fill="var(--ink)"/><path d="M26 46 Q32 42 38 46" stroke="var(--ink)" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>';
+const feedData = {};
+let feedLoading = false;
+let rowLists = {};
+function ageText(t) {
+  if (!t) return "";
+  const d = Math.floor((Date.now() - t) / 864e5);
+  if (d < 1) return "اليوم";
+  if (d < 2) return "مبارح";
+  if (d < 7) return "قبل " + d + " أيام";
+  if (d < 30) {
+    const w = Math.floor(d / 7);
+    return w === 1 ? "قبل أسبوع" : "قبل " + w + " أسابيع";
+  }
+  if (d < 365) {
+    const m = Math.floor(d / 30);
+    return m === 1 ? "قبل شهر" : "قبل " + m + " شهور";
+  }
+  const y = Math.floor(d / 365);
+  return y === 1 ? "قبل سنة" : "قبل " + y + " سنين";
+}
+function loadFeed() {
+  return __async(this, null, function* () {
+    if (feedLoading) return;
+    feedLoading = true;
+    const todo = channels.filter((c) => {
+      const c2 = getCached(c.id);
+      if (c2) {
+        feedData[c.id] = c2.videos;
+        return false;
+      }
+      return true;
+    });
+    let i = 0;
+    const worker = () => __async(null, null, function* () {
+      while (i < todo.length) {
+        const ch = todo[i++];
+        try {
+          const res = yield api.videos(ch, null);
+          feedData[ch.id] = res.videos;
+          putCached(ch.id, { at: Date.now(), videos: res.videos, next: res.next });
+        } catch (e) {
+          if (!feedData[ch.id]) feedData[ch.id] = [];
+        }
+      }
+    });
+    yield Promise.all([worker(), worker(), worker()]);
+    feedLoading = false;
+  });
+}
+function buildFeed(max) {
+  const lists = channels.map((c) => visible(feedData[c.id] || []).slice().sort((x, y) => (y.at || 0) - (x.at || 0)).map((v) => Object.assign({}, v, { ch: c })));
+  lists.sort((x, y) => (y[0] && y[0].at || 0) - (x[0] && x[0].at || 0));
+  const out = [];
+  for (let round = 0; out.length < max; round++) {
+    let added = false;
+    lists.forEach((l) => {
+      if (l[round] && out.length < max) {
+        out.push(l[round]);
+        added = true;
+      }
+    });
+    if (!added) break;
+  }
+  return out;
+}
+function videoCard(v, row, i, big) {
+  const meta = [row === "feed" && v.ch ? esc(v.ch.title) : "", ageText(v.at)].filter(Boolean).join(" · ");
+  return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
+}
+function skelCards(n, big) {
+  let s = "";
+  for (let i = 0; i < n; i++) s += '<div class="v skel'.concat(big ? " big" : "", '"><span class="th sk"></span><span class="tt sk"></span></div>');
+  return s;
+}
+function rowHTML(title, inner, extraClass) {
+  return '<section class="hrow'.concat(extraClass ? " " + extraClass : "", '"><h2>').concat(title, '</h2><div class="hrow-view"><div class="hrow-track" data-tx="0">').concat(inner, "</div></div></section>");
+}
 function renderHome() {
   const hr = (/* @__PURE__ */ new Date()).getHours();
   renderTimeChip();
@@ -543,24 +698,77 @@ function renderHome() {
     notice.textContent = errText(channelsError);
     notice.classList.remove("hidden");
   } else notice.classList.add("hidden");
-  const grid = $("#ch-grid");
+  const box = $("#home-rows");
+  rowLists = {};
   if (channelsLoading) {
-    let s = "";
-    for (let i = 0; i < 5; i++) s += '<div class="ch skel"><span class="av sk"></span><span class="nm sk"></span></div>';
-    grid.innerHTML = s;
+    let chs2 = "";
+    for (let i = 0; i < 6; i++) chs2 += '<div class="ch skel"><span class="av sk"></span><span class="nm sk"></span></div>';
+    box.innerHTML = rowHTML("الجديد من قنواتكم", skelCards(4, true)) + rowHTML("القنوات", chs2, "chans");
     return;
   }
   if (!channels.length) {
-    grid.innerHTML = '<div class="empty">' + EMPTY_SVG + '<p>لسا ما في قنوات هون.</p><p class="muted">خلّي ماما أو بابا يضيفوا قنوات من زر «الأهل».</p></div>';
+    box.innerHTML = '<div class="empty">' + EMPTY_SVG + '<p>لسا ما في قنوات هون.</p><p class="muted">خلّي ماما أو بابا يضيفوا قنوات من زر «الأهل».</p></div>';
     return;
   }
-  grid.innerHTML = channels.map(
-    (c) => '<button class="f ch" data-id="'.concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt=""></span><span class="nm">').concat(esc(c.title), "</span></button>")
-  ).join("");
+  const haveAny = channels.some((c) => feedData[c.id]);
+  let html = "";
+  if (haveAny) {
+    const feed = buildFeed(30);
+    rowLists.feed = feed;
+    html += rowHTML("الجديد من قنواتكم", feed.length ? feed.map((v, i) => videoCard(v, "feed", i, true)).join("") : '<p class="muted row-empty">ما في فيديوهات لسا.</p>');
+  } else {
+    html += rowHTML("الجديد من قنواتكم", skelCards(4, true));
+  }
+  html += rowHTML("القنوات", channels.map(
+    (c) => '<button class="f ch" data-id="'.concat(esc(c.id), '" data-key="ch:').concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt=""></span><span class="nm">').concat(esc(c.title), "</span></button>")
+  ).join(""), "chans");
+  channels.forEach((c) => {
+    const list = visible(feedData[c.id] || []).slice(0, 12);
+    if (!list.length) return;
+    const key = "c:" + c.id;
+    rowLists[key] = list;
+    html += rowHTML(esc(c.title), list.map((v, i) => videoCard(v, key, i, false)).join("") + '<button class="f more" data-id="'.concat(esc(c.id), '" data-key="more:').concat(esc(c.id), '"><span class="more-in"><img src="').concat(esc(c.thumb), '" alt=""><b>كل فيديوهات القناة</b></span></button>'));
+  });
+  box.innerHTML = html;
 }
-function focusHome() {
-  const want = lastFocus.home && $('.ch[data-id="' + lastFocus.home + '"]');
-  focusEl(want || $("#ch-grid .ch") || $("#parent-btn"));
+function rerenderHomeKeepFocus() {
+  const a = document.activeElement;
+  const key = a && a.getAttribute && a.getAttribute("data-key");
+  const sc = $("#home .scroll");
+  const top = sc.scrollTop;
+  renderHome();
+  sc.scrollTop = top;
+  if (current !== "home") return;
+  const el = key && $('#home [data-key="' + key + '"]');
+  if (el && !homeFocusPending) focusEl(el);
+  else if (homeFocusPending || !a || a === document.body || !$("#home").contains(a)) {
+    if ($("#home .hrow .v.f")) homeFocusPending = false;
+    focusHome(true);
+  }
+}
+function refreshHomeData() {
+  return __async(this, null, function* () {
+    yield loadFeed();
+    if (current === "home") rerenderHomeKeepFocus();
+  });
+}
+let lastListLoad = 0;
+let homeFocusPending = true;
+function refreshChannelsSoon() {
+  if (Date.now() - lastListLoad < 45e3) return;
+  lastListLoad = Date.now();
+  const before = channels.map((c) => c.id).join(",");
+  loadChannels().then(() => {
+    const changed = channels.map((c) => c.id).join(",") !== before;
+    if (changed && current === "home") rerenderHomeKeepFocus();
+    refreshHomeData();
+  });
+}
+function focusHome(noRefresh) {
+  if (!noRefresh) refreshChannelsSoon();
+  const k = lastFocus.homeKey;
+  const want = k && $('#home [data-key="' + k + '"]') || lastFocus.home && $('#home .ch[data-id="' + lastFocus.home + '"]');
+  focusEl(want || $("#home .hrow .v.f") || $("#home .ch.f") || $("#parent-btn"));
 }
 let chs = null;
 let chSeq = 0;
@@ -568,6 +776,8 @@ function openChannel(id) {
   const ch = channels.find((c) => c.id === id);
   if (!ch) return;
   lastFocus.home = id;
+  const a = document.activeElement;
+  if (current === "home" && a && a.getAttribute("data-key")) lastFocus.homeKey = a.getAttribute("data-key");
   const seq = ++chSeq;
   chs = { ch, all: [], next: null, loading: true, seq, error: null };
   $("#ch-av").src = ch.thumb || "";
@@ -662,6 +872,7 @@ let player = null;
 let playerReady = null;
 let ytApiReady = null;
 let playList = [];
+let playFrom = "channel";
 let playIdx = -1;
 let curVid = null;
 let pState = -1;
@@ -920,6 +1131,12 @@ function closePlayer() {
   curVid = null;
   hideOSD();
   spinner(false);
+  if (playFrom !== "channel") {
+    show("home");
+    const t = $('#home .v[data-row="' + playFrom + '"][data-i="' + playIdx + '"]');
+    focusEl(t || $("#home .hrow .v.f") || $("#parent-btn"));
+    return;
+  }
   show("channel");
   const tile = $('#v-grid .v[data-i="' + playIdx + '"]');
   focusEl(tile || $("#v-grid .v") || $("#channel .back-btn"));
@@ -1115,12 +1332,11 @@ function pinSubmit() {
     renderPin("الرقمين مش متطابقين، ابدأ من جديد", true);
   }
 }
-let addFound = null;
 function openSettings() {
   renderSettings();
   $("#add-in").value = "";
   $("#add-res").innerHTML = "";
-  addFound = null;
+  addResults = [];
   $("#settings-scroll").scrollTop = 0;
   show("settings");
   focusEl($("#add-in"));
@@ -1145,6 +1361,10 @@ function renderTimeSettings() {
   $("#time-today").textContent = t;
   $("#bonus-btn").classList.toggle("hidden", !limitOn());
 }
+let addResults = [];
+function isDirectInput(q) {
+  return /(UC[\w-]{22})|youtube\.com|youtu\.be|^@/.test(q);
+}
 function addSearch() {
   return __async(this, null, function* () {
     const q = $("#add-in").value.trim();
@@ -1154,15 +1374,21 @@ function addSearch() {
       return;
     }
     res.innerHTML = '<p class="res-msg"><span class="dots"><i></i><i></i><i></i></span></p>';
-    addFound = null;
+    addResults = [];
     try {
-      const ch = yield api.resolve(q);
+      if (isDirectInput(q)) {
+        const ch = yield api.resolve(q);
+        if (ch) addResults = [ch];
+      } else {
+        addResults = yield api.search(q);
+      }
       if (current !== "settings") return;
-      if (!ch) throw new ApiError("notfound");
-      addFound = ch;
-      const exists = channels.some((c) => c.id === ch.id);
-      res.innerHTML = '<div class="res"><img src="'.concat(esc(ch.thumb), '" alt=""><div class="info"><b>').concat(esc(ch.title), "</b><span>").concat(ch.subs ? fmtCount(ch.subs) + " مشترك" : "", "</span></div>") + (exists ? '<span class="muted" style="font-size:2.4rem">موجودة أصلاً</span>' : '<button class="f btn primary" data-act="add-ok">أضف القناة</button><button class="f btn" data-act="add-no">إلغاء</button>') + "</div>";
-      focusEl($('[data-act="add-ok"]') || $("#add-in"));
+      if (!addResults.length) throw new ApiError("notfound");
+      res.innerHTML = addResults.map((ch, i) => {
+        const exists = channels.some((c) => c.id === ch.id);
+        return '<div class="res"><img src="'.concat(esc(ch.thumb), '" alt=""><div class="info"><b>').concat(esc(ch.title), "</b><span>").concat(ch.subs ? fmtCount(ch.subs) + " مشترك" : "").concat(ch.videoCount ? " · " + fmtCount(ch.videoCount) + " فيديو" : "", "</span></div>") + (exists ? '<span class="muted" style="font-size:2.4rem">موجودة</span>' : '<button class="f btn primary" data-add-i="'.concat(i, '">أضف</button>')) + "</div>";
+      }).join("");
+      focusEl($("[data-add-i]") || $("#add-in"));
     } catch (e) {
       if (current !== "settings") return;
       res.innerHTML = '<p class="res-msg bad">' + esc(errText(e)) + "</p>";
@@ -1170,9 +1396,9 @@ function addSearch() {
     }
   });
 }
-function addConfirm() {
-  if (!addFound) return;
-  const ch = addFound;
+function addConfirm(i) {
+  const ch = addResults[i];
+  if (!ch) return;
   const keep = { id: ch.id, title: ch.title, thumb: ch.thumb, uploads: ch.uploads, hue: ch.hue };
   const list = tvChannels().filter((c) => c.id !== ch.id);
   list.push(keep);
@@ -1180,7 +1406,7 @@ function addConfirm() {
   store.set("removed", removedIds().filter((id) => id !== ch.id));
   rebuildChannelsLocal();
   if (!channels.some((c) => c.id === ch.id)) channels.push(Object.assign({}, keep, { source: "tv" }));
-  addFound = null;
+  addResults = [];
   $("#add-in").value = "";
   $("#add-res").innerHTML = "";
   renderSettings();
@@ -1198,7 +1424,7 @@ function removeChannel(id) {
     if (r.indexOf(id) < 0) r.push(id);
     store.set("removed", r);
   }
-  store.del("vc." + id);
+  store.del("vc2." + id);
   rebuildChannelsLocal();
   renderSettings();
   toast("انحذفت «" + ch.title + "»");
@@ -1220,7 +1446,7 @@ function goBack() {
     case "channel":
       chSeq++;
       show("home");
-      renderHome();
+      rerenderHomeKeepFocus();
       focusHome();
       break;
     case "player":
@@ -1238,6 +1464,7 @@ function goBack() {
       show("home");
       renderHome();
       focusEl($("#parent-btn"));
+      refreshHomeData();
       break;
   }
 }
@@ -1278,6 +1505,7 @@ function onKey(e) {
   const dir = { 37: "left", 38: "up", 39: "right", 40: "down" }[code];
   if (dir) {
     e.preventDefault();
+    if (current === "home") homeFocusPending = false;
     moveFocus(dir);
     return;
   }
@@ -1306,8 +1534,8 @@ function onClick(e) {
     if (id) openChannel(id);
     return;
   }
-  if (act === "add-ok") {
-    addConfirm();
+  if (b.hasAttribute("data-add-i")) {
+    addConfirm(+b.getAttribute("data-add-i"));
     return;
   }
   if (act === "tu-home") {
@@ -1321,18 +1549,19 @@ function onClick(e) {
     } });
     return;
   }
-  if (act === "add-no") {
-    addFound = null;
-    $("#add-res").innerHTML = "";
-    focusEl($("#add-in"));
-    return;
-  }
-  if (b.classList.contains("ch")) {
+  if (b.classList.contains("ch") || b.classList.contains("more")) {
     openChannel(b.getAttribute("data-id"));
     return;
   }
   if (b.classList.contains("v")) {
-    playList = visible(chs.all);
+    const row = b.getAttribute("data-row");
+    if (row) {
+      playFrom = row;
+      playList = rowLists[row] || [];
+    } else {
+      playFrom = "channel";
+      playList = visible(chs.all);
+    }
     playAt(+b.getAttribute("data-i"));
     return;
   }
@@ -1408,11 +1637,21 @@ function onFocusIn(e) {
     if (total - +el.getAttribute("data-i") <= 8) loadMore();
   }
 }
+function measureRem() {
+  remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 10;
+}
 function init() {
+  measureRem();
+  window.addEventListener("resize", measureRem);
   document.addEventListener("keydown", onKey, true);
   document.addEventListener("click", onClick);
   document.addEventListener("focusin", onFocusIn);
+  let lastMove = 0;
+  document.addEventListener("mousemove", () => {
+    lastMove = Date.now();
+  });
   document.addEventListener("mouseover", (e) => {
+    if (Date.now() - lastMove > 150) return;
     const el = e.target.closest && e.target.closest(".f");
     if (el && el !== document.activeElement && current !== "player") {
       try {
@@ -1440,7 +1679,10 @@ function init() {
     if (current === "home" && !channels.length) start();
   });
   setInterval(() => {
-    if (current === "home") renderTimeChip();
+    if (current === "home") {
+      renderTimeChip();
+      refreshChannelsSoon();
+    }
   }, 3e4);
   window.addEventListener("beforeunload", () => {
     if (usage) saveUsage();
@@ -1451,12 +1693,14 @@ function init() {
   });
 }
 function start() {
+  lastListLoad = Date.now();
   channelsLoading = true;
   renderHome();
   focusEl($("#parent-btn"));
   loadChannels().then(() => {
     renderHome();
-    if (current === "home") focusHome();
+    if (current === "home") focusHome(true);
+    return refreshHomeData();
   });
 }
 init();
