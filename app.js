@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.2.0";
+var VERSION = "1.3.0";
 const store = {
   get(k, d) {
     try {
@@ -708,7 +708,7 @@ function buildFeed(max) {
   return out;
 }
 function videoCard(v, row, i, big) {
-  const meta = [row === "feed" && v.ch ? esc(v.ch.title) : "", ageText(v.at)].filter(Boolean).join(" · ");
+  const meta = [(row === "feed" || row === "search") && v.ch ? esc(v.ch.title) : "", ageText(v.at)].filter(Boolean).join(" · ");
   return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
 }
 function skelCards(n, big) {
@@ -998,6 +998,179 @@ function renderVideos(full) {
 function focusFirstVideo() {
   focusEl($("#v-grid .v.f") || $("#ch-tabs .tab") || $("#channel .back-btn"));
 }
+const IDX_TTL = 24 * 3600 * 1e3;
+const IDX_PAGES = 10;
+const idxMem = {};
+let idxBuilding = false;
+let idxProgress = { done: 0, total: 0 };
+function getIdx(id) {
+  if (!idxMem[id]) idxMem[id] = store.get("idx2." + id, null);
+  return idxMem[id];
+}
+function packVideo(v) {
+  const yt2 = "https://i.ytimg.com/vi/" + v.id + "/";
+  return [v.id, v.title, v.dur || 0, v.at || 0, v.thumb && v.thumb.indexOf(yt2) !== 0 ? v.thumb : 0];
+}
+function unpackVideo(it, ch) {
+  return { id: it[0], title: it[1], dur: it[2], at: it[3], thumb: it[4] || "https://i.ytimg.com/vi/" + it[0] + "/mqdefault.jpg", ch };
+}
+function buildIndex(onProgress) {
+  return __async(this, null, function* () {
+    if (idxBuilding) return;
+    idxBuilding = true;
+    const list = channels.slice();
+    idxProgress = { done: 0, total: list.length };
+    for (const ch of list) {
+      const cur = getIdx(ch.id);
+      if (!cur || Date.now() - cur.at > IDX_TTL) {
+        const items = [];
+        let token = null, pages = 0;
+        try {
+          do {
+            const res = yield api.videos(ch, token);
+            res.videos.forEach((v) => items.push(packVideo(v)));
+            token = res.next;
+            pages++;
+            if (!cur) idxMem[ch.id] = { at: 0, items: items.slice() };
+            if (onProgress) onProgress();
+          } while (token && pages < IDX_PAGES);
+          idxMem[ch.id] = { at: Date.now(), items };
+          store.set("idx2." + ch.id, idxMem[ch.id]);
+        } catch (e) {
+        }
+      }
+      idxProgress.done++;
+      if (onProgress) onProgress();
+    }
+    idxBuilding = false;
+    if (onProgress) onProgress();
+  });
+}
+function norm(s) {
+  return String(s || "").toLowerCase().replace(/[ً-ٰٟـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/ؤ/g, "و").replace(/ئ/g, "ي").replace(/[^0-9a-zء-ي ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+const normCache = {};
+function normTitle(id, t) {
+  return normCache[id] || (normCache[id] = norm(t));
+}
+function searchLocal(q) {
+  const nq = norm(q);
+  if (!nq) return [];
+  const terms = nq.split(" ");
+  const out = [];
+  const seen = {};
+  channels.forEach((ch) => {
+    const idx = getIdx(ch.id);
+    const items = idx && idx.items.length ? idx.items : (feedData[ch.id] || []).map(packVideo);
+    const chn = norm(ch.title);
+    items.forEach((it) => {
+      if (seen[it[0]]) return;
+      const t = normTitle(it[0], it[1]);
+      const hay = t + " " + chn;
+      for (let i = 0; i < terms.length; i++) if (hay.indexOf(terms[i]) < 0) return;
+      seen[it[0]] = 1;
+      const v = unpackVideo(it, ch);
+      v.score = (t.indexOf(nq) === 0 ? 3 : 0) + (t.indexOf(nq) >= 0 ? 2 : 0) + (chn.indexOf(nq) >= 0 ? 1 : 0);
+      out.push(v);
+    });
+  });
+  out.sort((x, y) => y.score - x.score || (y.at || 0) - (x.at || 0));
+  return visible(out).slice(0, 60);
+}
+let srQuery = "";
+let kbMode = "ar";
+let srT = null;
+const KB = {
+  ar: ["ابتثجحخ", "دذرزسشص", "ضطظعغفق", "كلمنهوي", "ةءىؤئ"],
+  en: ["abcdefg", "hijklmn", "opqrstu", "vwxyz", "0123456", "789"]
+};
+const ICON_DEL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-6-6z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 10l4 4M16 10l-4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+function renderKb() {
+  let html = "";
+  KB[kbMode].forEach((row) => {
+    html += '<div class="kb-row">';
+    for (const ch of row) html += '<button class="f kb-key" data-k="'.concat(esc(ch), '">').concat(esc(ch), "</button>");
+    html += "</div>";
+  });
+  html += '<div class="kb-row kb-ctrl"><button class="f kb-key wide" data-kc="space">مسافة</button>' + '<button class="f kb-key" data-kc="del" aria-label="مسح">'.concat(ICON_DEL, "</button>") + '<button class="f kb-key mode" data-kc="mode">'.concat(kbMode === "ar" ? "ABC" : "أ ب ت", "</button>") + '</div><div class="kb-row kb-ctrl"><button class="f kb-key wide2" data-kc="clear">امسح الكل</button></div>';
+  $("#kb").innerHTML = html;
+}
+function updateSearchBox() {
+  const t = $("#sr-text");
+  t.textContent = srQuery;
+  t.classList.toggle("ph", !srQuery);
+  if (!srQuery) t.textContent = "شو بدك تدوّر؟";
+}
+function srStatus() {
+  const el = $("#sr-status");
+  if (idxBuilding) el.textContent = "عم نجهّز البحث… " + idxProgress.done + " من " + idxProgress.total + " قنوات";
+  else {
+    let n = 0;
+    channels.forEach((c) => {
+      const i = getIdx(c.id);
+      n += i ? i.items.length : 0;
+    });
+    el.textContent = n ? "منبحث بين " + n + " فيديو من قنواتكم" : "";
+  }
+}
+function renderSearch() {
+  const grid = $("#sr-grid");
+  let list, title;
+  if (!norm(srQuery)) {
+    list = buildFeed(24);
+    title = "جديد من قنواتكم";
+  } else {
+    list = searchLocal(srQuery);
+    title = list.length ? "لقينا " + list.length + (list.length >= 60 ? "+" : "") + " فيديو" : "";
+  }
+  rowLists.search = list;
+  $("#sr-title").textContent = title;
+  if (!list.length) {
+    grid.innerHTML = '<div class="sr-empty">' + EMPTY_SVG + "<p>" + (idxBuilding ? "لحظة، لسا عم نجهّز البحث…" : "ما لقينا شي، جرّب كلمة ثانية") + "</p></div>";
+    return;
+  }
+  grid.innerHTML = list.map((v, i) => videoCard(v, "search", i, false)).join("");
+}
+function srChanged() {
+  updateSearchBox();
+  clearTimeout(srT);
+  srT = setTimeout(() => {
+    renderSearch();
+    $("#search-scroll").scrollTop = 0;
+  }, 140);
+}
+function openSearch() {
+  show("search");
+  renderKb();
+  updateSearchBox();
+  renderSearch();
+  srStatus();
+  focusEl($(".kb-key[data-k]"));
+  buildIndex(() => {
+    srStatus();
+    if (current === "search" && norm(srQuery)) {
+      const a = document.activeElement;
+      const inGrid = a && $("#sr-grid").contains(a);
+      if (!inGrid) renderSearch();
+    }
+  });
+}
+function kbPress(b) {
+  const k = b.getAttribute("data-k");
+  const c = b.getAttribute("data-kc");
+  if (k) srQuery += k;
+  else if (c === "space") {
+    if (srQuery && srQuery.slice(-1) !== " ") srQuery += " ";
+  } else if (c === "del") srQuery = srQuery.slice(0, -1);
+  else if (c === "clear") srQuery = "";
+  else if (c === "mode") {
+    kbMode = kbMode === "ar" ? "en" : "ar";
+    renderKb();
+    focusEl($('.kb-key[data-kc="mode"]'));
+    return;
+  }
+  srChanged();
+}
 let player = null;
 let playerReady = null;
 let ytApiReady = null;
@@ -1261,6 +1434,11 @@ function closePlayer() {
   curVid = null;
   hideOSD();
   spinner(false);
+  if (playFrom === "search") {
+    show("search");
+    focusEl($('#sr-grid .v[data-i="' + playIdx + '"]') || $(".kb-key[data-k]"));
+    return;
+  }
   if (playFrom !== "channel") {
     show("home");
     const t = $('#home .v[data-row="' + playFrom + '"][data-i="' + playIdx + '"]');
@@ -1555,6 +1733,8 @@ function removeChannel(id) {
     store.set("removed", r);
   }
   store.del("vc2." + id);
+  store.del("idx2." + id);
+  delete idxMem[id];
   rebuildChannelsLocal();
   renderSettings();
   toast("انحذفت «" + ch.title + "»");
@@ -1595,6 +1775,10 @@ function goBack() {
       renderHome();
       focusHome();
       break;
+    case "search":
+      show("home");
+      focusEl($("#search-btn"));
+      break;
     case "settings":
       show("home");
       renderHome();
@@ -1621,6 +1805,20 @@ function onKey(e) {
     if (code >= 96 && code <= 105) {
       e.preventDefault();
       pinPress(String(code - 96));
+      return;
+    }
+  }
+  if (current === "search") {
+    if (code === 8 && srQuery) {
+      e.preventDefault();
+      srQuery = srQuery.slice(0, -1);
+      srChanged();
+      return;
+    }
+    if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && code !== 13) {
+      e.preventDefault();
+      srQuery += e.key === " " ? srQuery && srQuery.slice(-1) !== " " ? " " : "" : e.key;
+      srChanged();
       return;
     }
   }
@@ -1652,6 +1850,14 @@ function onKey(e) {
 function onClick(e) {
   const b = e.target.closest("button, [data-act]");
   if (!b) return;
+  if (b.id === "search-btn") {
+    openSearch();
+    return;
+  }
+  if (b.classList.contains("kb-key")) {
+    kbPress(b);
+    return;
+  }
   if (b.id === "parent-btn") {
     openPin({ done: openSettings, cancel: () => {
       show("home");
@@ -1855,7 +2061,7 @@ function start() {
   loadChannels().then(() => {
     renderHome();
     if (current === "home") focusHome(true);
-    return refreshHomeData();
+    return refreshHomeData().then(() => setTimeout(() => buildIndex(), 8e3));
   });
 }
 init();

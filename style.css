@@ -301,3 +301,42 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 .pl-badge { position: absolute; left: 1.2rem; bottom: 1.1rem; z-index: 1; display: flex; align-items: center; font-size: 2.1rem; font-weight: 800; color: var(--navy); background: var(--yellow); padding: .6rem 1.4rem .4rem; border-radius: 1.2rem; }
 .pl-badge svg { width: 2.4rem; height: 2.4rem; margin-left: .6rem; }
 .v .ep { position: absolute; right: 1.1rem; top: 1.1rem; min-width: 4.4rem; text-align: center; font-size: 2.2rem; font-weight: 800; line-height: 1; color: var(--navy); background: var(--yellow); padding: .8rem 1rem .6rem; border-radius: 50%; }
+
+/* ---------- search ---------- */
+.top-btns { display: flex; align-items: center; }
+.search-btn {
+  display: flex; align-items: center; font-size: 3rem; font-weight: 800; color: var(--navy); background: var(--yellow);
+  padding: 1.2rem 3.2rem 1rem 3.6rem; border-radius: 10rem; margin-left: 2rem; box-shadow: var(--toy);
+}
+.search-btn svg { width: 3.4rem; height: 3.4rem; margin-left: 1.2rem; }
+.search-btn:focus { background: var(--white); transform: scale(1.08); box-shadow: var(--pop); }
+
+.sr-side { position: absolute; top: 0; right: 0; bottom: 0; width: 72rem; padding: 4.8rem 6.4rem 0 4rem; z-index: 2; }
+.sr-box { display: flex; align-items: center; height: 9.6rem; padding: 0 3.2rem; border-radius: 10rem; background: var(--white); color: var(--navy); box-shadow: var(--toy); margin-bottom: 3.2rem; }
+.sr-box svg { width: 4rem; height: 4rem; margin-left: 2rem; color: var(--sky2); flex-shrink: 0; }
+.sr-text { font-size: 3.6rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 52rem; }
+.sr-text.ph { color: #a5a3cf; font-weight: 700; }
+.caret { display: inline-block; width: .5rem; height: 4.4rem; border-radius: .4rem; background: var(--coral); margin-right: .6rem; animation: shimmer 1s steps(2) infinite; }
+.kb-row { display: flex; justify-content: flex-start; }
+.kb-key {
+  width: 8rem; height: 7.6rem; margin: 0 0 1.2rem 1.2rem; border-radius: 2rem; background: var(--white); color: var(--navy);
+  font-size: 3.6rem; font-weight: 800; text-align: center; box-shadow: 0 .6rem 0 rgba(20, 30, 110, .16); line-height: 1;
+}
+.kb-key svg { width: 4rem; height: 4rem; display: block; margin: 0 auto; }
+.kb-key.wide { width: 36.4rem; font-size: 2.8rem; }
+.kb-key.wide2 { width: 54.4rem; font-size: 2.8rem; background: rgba(255, 255, 255, .75); }
+.kb-key.mode { width: 17.2rem; font-size: 2.8rem; background: var(--yellow); }
+.kb-ctrl { margin-top: .4rem; }
+.kb-key:focus { background: var(--yellow); transform: scale(1.12); box-shadow: 0 0 0 .5rem var(--white), 0 1.4rem 3rem rgba(20, 20, 80, .35); }
+.kb-key.mode:focus { background: var(--white); }
+.sr-status { font-size: 2.2rem; font-weight: 600; margin-top: 1.6rem; color: rgba(255, 255, 255, .9); }
+
+.sr-main { right: 72rem; padding: 4.8rem 4rem 8rem 9.6rem; }
+.sr-title { font-size: 3.4rem; font-weight: 800; margin-bottom: 2.8rem; min-height: 4rem; text-shadow: 0 .4rem 0 rgba(20, 30, 110, .22); }
+.sr-grid { margin-left: -3.2rem; }
+.sr-grid .v { width: 31.6rem; margin: 0 0 3.6rem 3.2rem; }
+.sr-grid .v .tt { font-size: 2.2rem; min-height: 6rem; }
+.sr-grid .v .meta { font-size: 1.9rem; }
+.sr-empty { width: 100%; margin-left: 3.2rem; text-align: center; padding: 8rem 0; }
+.sr-empty svg { width: 16rem; height: 16rem; display: block; margin: 0 auto 2.4rem; animation: floaty 3s ease-in-out infinite; }
+.sr-empty p { font-size: 3.2rem; font-weight: 800; text-shadow: 0 .4rem 0 rgba(20, 30, 110, .2); }

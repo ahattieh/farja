@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.2.0">
+<link rel="stylesheet" href="style.css?v=1.3.0">
 </head>
 <body>
 
@@ -25,10 +25,16 @@
         </svg>
         <span class="brand-name">صندوق <b>الفرجة</b></span>
       </div>
+      <div class="top-btns">
+      <button class="f search-btn" id="search-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.8"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        <span>ابحث</span>
+      </button>
       <button class="f parent-btn" id="parent-btn">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="11" rx="3" fill="currentColor"/></svg>
         <span>الأهل</span>
       </button>
+      </div>
     </header>
     <div class="hello">
       <p id="greet" class="greet"></p>
@@ -59,6 +65,22 @@
     <div id="ch-tabs" class="tabs"></div>
     <div id="v-grid" class="v-grid"></div>
     <div id="v-more" class="v-more hidden"><span class="dots"><i></i><i></i><i></i></span></div>
+  </div>
+</section>
+
+<!-- ============ SEARCH ============ -->
+<section id="search" class="screen">
+  <aside class="sr-side">
+    <div class="sr-box">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.8"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <span id="sr-text" class="sr-text" dir="auto"></span><i class="caret"></i>
+    </div>
+    <div id="kb" class="kb" dir="rtl"></div>
+    <p id="sr-status" class="sr-status"></p>
+  </aside>
+  <div class="sr-main scroll" id="search-scroll">
+    <h2 id="sr-title" class="sr-title"></h2>
+    <div id="sr-grid" class="v-grid sr-grid"></div>
   </div>
 </section>
 
@@ -189,7 +211,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=1.2.0"></script>
-<script src="app.js?v=1.2.0"></script>
+<script src="config.js?v=1.3.0"></script>
+<script src="app.js?v=1.3.0"></script>
 </body>
 </html>
