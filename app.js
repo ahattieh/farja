@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "1.1.0";
+var VERSION = "1.2.0";
 const store = {
   get(k, d) {
     try {
@@ -200,8 +200,24 @@ const realApi = {
   },
   // One page of a channel's uploads, with durations and embeddability.
   videos(ch, pageToken) {
+    return realApi.playlistVideos(ch.uploads, pageToken);
+  },
+  playlists(ch, pageToken) {
     return __async(this, null, function* () {
-      const pl = yield yt("playlistItems", { part: "contentDetails", playlistId: ch.uploads, maxResults: 50, pageToken });
+      const j = yield yt("playlists", { part: "snippet,contentDetails", channelId: ch.id, maxResults: 50, pageToken });
+      const lists = (j.items || []).filter((p) => p.contentDetails && p.contentDetails.itemCount > 0).map((p) => ({
+        id: p.id,
+        title: p.snippet && p.snippet.title || "",
+        thumb: pickThumb(p.snippet && p.snippet.thumbnails, ["high", "medium", "standard", "default"]),
+        count: p.contentDetails.itemCount
+      }));
+      return { lists, next: j.nextPageToken || null };
+    });
+  },
+  // One page of any playlist (a channel's uploads is a playlist too), with durations and embeddability.
+  playlistVideos(playlistId, pageToken) {
+    return __async(this, null, function* () {
+      const pl = yield yt("playlistItems", { part: "contentDetails", playlistId, maxResults: 50, pageToken });
       const ids = (pl.items || []).map((i) => i.contentDetails && i.contentDetails.videoId).filter(Boolean);
       if (!ids.length) return { videos: [], next: pl.nextPageToken || null };
       const vj = yield yt("videos", { part: "snippet,contentDetails,status", id: ids.join(","), maxResults: 50 });
@@ -286,6 +302,23 @@ const demoApi = {
       const out = [];
       for (let i = 0; i < 3; i++) out.push(yield demoApi.resolve(q + (i ? " " + (i + 1) : "")));
       return out.filter(Boolean);
+    });
+  },
+  playlists(ch) {
+    return __async(this, null, function* () {
+      yield new Promise((r) => setTimeout(r, 350));
+      const names = ["الحلقات كاملة", "أغاني الحروف", "قصص قصيرة", "تعلّم الأرقام", "أجمل الحلقات"];
+      return {
+        lists: names.map((t, i) => ({ id: "PLdemo-" + ch.id + "-" + i, title: t, thumb: demoThumb((ch.hue || 200) + i * 40, i * 3), count: 8 + i * 5, hue: (ch.hue || 200) + i * 40 })),
+        next: null
+      };
+    });
+  },
+  playlistVideos(plId) {
+    return __async(this, null, function* () {
+      const m = /^PLdemo-(.+)-(\d+)$/.exec(plId) || [];
+      const res = yield demoApi.videos({ id: plId, hue: 120 + (+m[2] || 0) * 40 }, null);
+      return { videos: res.videos.slice(0, 8 + (+m[2] || 0) * 5), next: null };
     });
   },
   videos(ch, pageToken) {
@@ -772,6 +805,9 @@ function focusHome(noRefresh) {
 }
 let chs = null;
 let chSeq = 0;
+function activeSrc() {
+  return chs.tab === "pl" ? chs.pl : chs;
+}
 function openChannel(id) {
   const ch = channels.find((c) => c.id === id);
   if (!ch) return;
@@ -779,11 +815,12 @@ function openChannel(id) {
   const a = document.activeElement;
   if (current === "home" && a && a.getAttribute("data-key")) lastFocus.homeKey = a.getAttribute("data-key");
   const seq = ++chSeq;
-  chs = { ch, all: [], next: null, loading: true, seq, error: null };
+  chs = { ch, all: [], next: null, loading: true, seq, error: null, tab: "videos", lists: null, pl: null };
   $("#ch-av").src = ch.thumb || "";
   $("#ch-title").textContent = ch.title;
   $("#ch-sub").textContent = "";
   $("#channel-scroll").scrollTop = 0;
+  renderTabs();
   show("channel");
   const cached = getCached(ch.id);
   if (cached) {
@@ -799,49 +836,142 @@ function openChannel(id) {
   focusEl($("#channel .back-btn"));
   fetchPage(seq, null, true);
 }
+function renderTabs() {
+  const box = $("#ch-tabs");
+  if (chs.tab === "pl") {
+    box.innerHTML = '<button class="f tab" data-tab="lists"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>القوائم</button><h2 class="pl-name">'.concat(esc(chs.pl.meta.title), "</h2>");
+  } else {
+    box.innerHTML = '<button class="f tab'.concat(chs.tab === "videos" ? " on" : "", '" data-tab="videos">كل الفيديوهات</button><button class="f tab').concat(chs.tab === "lists" ? " on" : "", '" data-tab="lists">القوائم</button>');
+  }
+}
+function setTab(tab, plMeta) {
+  const seq = chs.seq;
+  chs.tab = tab;
+  $("#channel-scroll").scrollTop = 0;
+  if (tab === "pl") {
+    chs.pl = { meta: plMeta, id: plMeta.id, all: [], next: null, loading: true, error: null };
+    renderTabs();
+    renderVideos(true);
+    focusEl($("#ch-tabs .tab"));
+    fetchPage(seq, null, true);
+    return;
+  }
+  renderTabs();
+  if (tab === "lists") {
+    if (!chs.lists) {
+      chs.lists = { items: [], next: null, loading: true, error: null };
+      fetchLists(seq, null);
+    }
+    renderLists();
+  } else {
+    renderVideos(true);
+  }
+  focusEl($("#ch-tabs .tab.on"));
+}
+function fetchLists(seq, token) {
+  return __async(this, null, function* () {
+    const L = chs.lists;
+    L.loading = true;
+    try {
+      const res = yield api.playlists(chs.ch, token);
+      if (seq !== chSeq) return;
+      L.items = L.items.concat(res.lists);
+      L.next = res.next;
+      L.error = null;
+    } catch (e) {
+      if (seq !== chSeq) return;
+      L.error = e;
+    }
+    L.loading = false;
+    if (chs.tab === "lists") renderLists();
+  });
+}
+function renderLists() {
+  const grid = $("#v-grid");
+  const L = chs.lists;
+  if (L.loading && !L.items.length) {
+    let s = "";
+    for (let i = 0; i < 4; i++) s += '<div class="v skel"><span class="th sk"></span><span class="tt sk"></span></div>';
+    grid.innerHTML = s;
+    return;
+  }
+  if (L.error && !L.items.length) {
+    grid.innerHTML = '<div class="err-box"><p>' + esc(errText(L.error)) + '</p><button class="f btn primary" data-act="retry-lists">جرّب مرة ثانية</button></div>';
+    return;
+  }
+  if (!L.items.length) {
+    grid.innerHTML = '<div class="err-box"><p>هالقناة ما عندها قوائم تشغيل.</p></div>';
+    return;
+  }
+  $("#ch-sub").textContent = L.items.length + " قائمة";
+  grid.innerHTML = L.items.map(
+    (p, i) => '<button class="f v plc" data-pl="'.concat(i, '" data-i="').concat(i, '"><span class="th"><img src="').concat(esc(p.thumb), '" alt=""><span class="pl-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 11h11M4 16h7M17 13l5 3-5 3z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>').concat(p.count, ' فيديو</span></span><span class="tt">').concat(esc(p.title), "</span></button>")
+  ).join("");
+}
 function fetchPage(seq, token, first) {
   return __async(this, null, function* () {
-    chs.loading = true;
+    const src = activeSrc();
+    const isPl = src !== chs;
+    src.loading = true;
     $("#v-more").classList.toggle("hidden", first);
     try {
       let tries = 0;
       let res;
       do {
-        res = yield api.videos(chs.ch, token);
-        if (seq !== chSeq) return;
-        chs.all = chs.all.concat(res.videos);
-        chs.next = res.next;
+        res = isPl ? yield api.playlistVideos(src.id, token) : yield api.videos(chs.ch, token);
+        if (seq !== chSeq || activeSrc() !== src) {
+          src.loading = false;
+          return;
+        }
+        src.all = src.all.concat(res.videos);
+        src.next = res.next;
         token = res.next;
         tries++;
-      } while (token && tries < 3 && visible(chs.all).length < (first ? 12 : 8));
-      chs.error = null;
-      putCached(chs.ch.id, { at: Date.now(), videos: chs.all, next: chs.next });
+      } while (token && tries < 3 && visible(src.all).length < (first ? 12 : 8));
+      src.error = null;
+      if (!isPl) putCached(chs.ch.id, { at: Date.now(), videos: chs.all, next: chs.next });
     } catch (e) {
-      if (seq !== chSeq) return;
-      chs.error = e;
+      if (seq !== chSeq || activeSrc() !== src) {
+        src.loading = false;
+        return;
+      }
+      src.error = e;
     }
-    chs.loading = false;
+    src.loading = false;
     $("#v-more").classList.add("hidden");
-    const hadFocus = current === "channel" && document.activeElement && document.activeElement.classList.contains("back-btn");
+    const a = document.activeElement;
+    const hadFocus = current === "channel" && a && (a.classList.contains("back-btn") || a.classList.contains("tab"));
     renderVideos(first);
-    if (first && current === "channel" && hadFocus) focusFirstVideo();
+    if (first && current === "channel" && hadFocus && !isPl && chs.tab === "videos") focusFirstVideo();
+    if (first && current === "channel" && isPl && a && a.classList.contains("tab")) focusFirstVideo();
   });
 }
 function loadMore() {
-  if (!chs || chs.loading || !chs.next) return;
-  fetchPage(chs.seq, chs.next, false);
+  if (!chs) return;
+  if (chs.tab === "lists") {
+    if (chs.lists && !chs.lists.loading && chs.lists.next) fetchLists(chs.seq, chs.lists.next);
+    return;
+  }
+  const src = activeSrc();
+  if (src.loading || !src.next) return;
+  fetchPage(chs.seq, src.next, false);
 }
 function renderVideos(full) {
+  if (chs.tab === "lists") {
+    renderLists();
+    return;
+  }
+  const src = activeSrc();
   const grid = $("#v-grid");
-  const list = visible(chs.all);
-  if (chs.loading && !chs.all.length) {
+  const list = visible(src.all);
+  if (src.loading && !src.all.length) {
     let s = "";
     for (let i = 0; i < 8; i++) s += '<div class="v skel"><span class="th sk"></span><span class="tt sk"></span></div>';
     grid.innerHTML = s;
     return;
   }
-  if (chs.error && !list.length) {
-    grid.innerHTML = '<div class="err-box"><p>' + esc(errText(chs.error)) + '</p><button class="f btn primary" data-act="retry">جرّب مرة ثانية</button></div>';
+  if (src.error && !list.length) {
+    grid.innerHTML = '<div class="err-box"><p>' + esc(errText(src.error)) + '</p><button class="f btn primary" data-act="retry">جرّب مرة ثانية</button></div>';
     if (current === "channel") focusEl($('[data-act="retry"]'));
     return;
   }
@@ -849,10 +979,10 @@ function renderVideos(full) {
     grid.innerHTML = '<div class="err-box"><p>ما في فيديوهات هون.</p></div>';
     return;
   }
-  $("#ch-sub").textContent = list.length + (chs.next ? "+" : "") + " فيديو";
+  $("#ch-sub").textContent = list.length + (src.next ? "+" : "") + " فيديو";
   const html = (i) => {
     const v = list[i];
-    return '<button class="f v" data-i="'.concat(i, '" data-vid="').concat(esc(v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "", '</span><span class="tt">').concat(esc(v.title), "</span></button>");
+    return '<button class="f v" data-i="'.concat(i, '" data-vid="').concat(esc(v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(chs.tab === "pl" ? '<span class="ep">' + (i + 1) + "</span>" : "", '</span><span class="tt">').concat(esc(v.title), "</span></button>");
   };
   const have = full ? 0 : $$(".v[data-vid]", grid).length;
   if (full || have === 0 || have > list.length) {
@@ -866,7 +996,7 @@ function renderVideos(full) {
   }
 }
 function focusFirstVideo() {
-  focusEl($("#v-grid .v") || $("#channel .back-btn"));
+  focusEl($("#v-grid .v.f") || $("#ch-tabs .tab") || $("#channel .back-btn"));
 }
 let player = null;
 let playerReady = null;
@@ -1444,6 +1574,11 @@ function goBack() {
       }
       break;
     case "channel":
+      if (chs && chs.tab === "pl") {
+        setTab("lists");
+        focusEl($('#v-grid .v[data-pl="' + (chs.lastPl || 0) + '"]') || $("#ch-tabs .tab.on"));
+        break;
+      }
       chSeq++;
       show("home");
       rerenderHomeKeepFocus();
@@ -1530,6 +1665,10 @@ function onClick(e) {
     return;
   }
   if (act === "retry") {
+    if (chs && chs.tab === "pl") {
+      setTab("pl", chs.pl.meta);
+      return;
+    }
     const id = chs && chs.ch.id;
     if (id) openChannel(id);
     return;
@@ -1553,6 +1692,22 @@ function onClick(e) {
     openChannel(b.getAttribute("data-id"));
     return;
   }
+  if (b.hasAttribute("data-tab")) {
+    const t = b.getAttribute("data-tab");
+    if (t !== chs.tab) setTab(t);
+    return;
+  }
+  if (b.hasAttribute("data-pl")) {
+    const i = +b.getAttribute("data-pl");
+    chs.lastPl = i;
+    setTab("pl", chs.lists.items[i]);
+    return;
+  }
+  if (act === "retry-lists") {
+    chs.lists = null;
+    setTab("lists");
+    return;
+  }
   if (b.classList.contains("v")) {
     const row = b.getAttribute("data-row");
     if (row) {
@@ -1560,7 +1715,7 @@ function onClick(e) {
       playList = rowLists[row] || [];
     } else {
       playFrom = "channel";
-      playList = visible(chs.all);
+      playList = visible(activeSrc().all);
     }
     playAt(+b.getAttribute("data-i"));
     return;
