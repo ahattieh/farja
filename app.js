@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.2.0";
+var VERSION = "2.3.0";
 const store = {
   get(k, d) {
     try {
@@ -1443,6 +1443,16 @@ class FakePlayer {
     this.timer = setInterval(() => {
       if (Date.now() < adUntil) return;
       if (this.st === -1) this._s(1);
+      if (QS.has("demomid") && this.t >= 5 && !this.midDone) {
+        this.midDone = true;
+        this._s(2);
+        setTimeout(() => {
+          if (this.vid) this._s(1);
+          this.midUntil = 0;
+        }, 5e3);
+        this.midUntil = Date.now() + 5e3;
+      }
+      if (this.midUntil && Date.now() < this.midUntil) return;
       this.t += 0.25;
       if (this.t >= this.d) {
         this.t = this.d;
@@ -1679,9 +1689,11 @@ function togglePlay() {
     return;
   }
   if (st === 1 || st === 3) {
+    wePaused = true;
     player.pauseVideo();
     flash("pause");
   } else {
+    wePaused = false;
     player.playVideo();
     flash("play");
   }
@@ -1691,6 +1703,9 @@ function resetAdWatch() {
   adLastT = -1;
   adFrozenAt = 0;
   unstartedAt = 0;
+  oddSince = 0;
+  adForced = false;
+  wePaused = false;
   setAd(false);
 }
 function adSignals() {
@@ -1704,27 +1719,48 @@ function adSignals() {
   return { t, d, exp, durMismatch: !!(exp && d > 1 && Math.abs(d - exp) > 3) };
 }
 let unstartedAt = 0;
+let wePaused = false, oddSince = 0, adForced = false, adForcedAt = 0;
+function forceAd() {
+  adForced = true;
+  adForcedAt = Date.now();
+  adLastT = -1;
+  setAd(true);
+}
 function watchForAd() {
   const g = adSignals();
-  let isAd = false;
-  if (pState === -1) {
-    if (!unstartedAt) unstartedAt = Date.now();
-    if (Date.now() - unstartedAt > 1200) isAd = true;
-  } else unstartedAt = 0;
-  if (pState === 1) {
+  let ps = pState;
+  try {
+    const r = player.getPlayerState();
+    if (typeof r === "number") ps = r;
+  } catch (e) {
+  }
+  let odd = false;
+  if (ps === -1 || ps === 3 || ps === 5) odd = true;
+  if (ps === 2 && !wePaused) odd = true;
+  if (ps === 1) {
     if (Math.abs(g.t - adLastT) < 0.05) {
       if (!adFrozenAt) adFrozenAt = Date.now();
-      else if (Date.now() - adFrozenAt > 2500) isAd = true;
     } else {
       adFrozenAt = 0;
       adLastT = g.t;
     }
+    if (adFrozenAt && Date.now() - adFrozenAt > 2500) odd = true;
+  } else adFrozenAt = 0;
+  oddSince = odd ? oddSince || Date.now() : 0;
+  const limit = ps === 3 ? 3500 : ps === 2 ? 1500 : 1200;
+  let isAd = oddSince && Date.now() - oddSince > limit || g.durMismatch;
+  if (adForced) {
+    const moving = ps === 1 && !adFrozenAt && Date.now() - adForcedAt > 3e3;
+    if (moving) adForced = false;
+    else isAd = true;
   }
-  if (g.durMismatch) isAd = true;
-  if (pState === 2 || pState === 0) isAd = false;
+  if (ps === 2 && wePaused || ps === 0) {
+    isAd = false;
+    adForced = false;
+  }
   if (isAd && !adMode) setAd(true);
-  else if (!isAd && adMode && (pState === 1 || pState === 2 || pState === 0)) setAd(false);
-  if (dbgOn) renderDebug(g);
+  else if (!isAd && adMode) setAd(false);
+  if (dbgOn) renderDebug(g, ps);
 }
 let dbgOn = false, dbgKeys = [];
 function toggleDebug() {
@@ -1732,7 +1768,7 @@ function toggleDebug() {
   $("#dbg").classList.toggle("hidden", !dbgOn);
   if (dbgOn) renderDebug(adSignals());
 }
-function renderDebug(g) {
+function renderDebug(g, ps) {
   let vd = {}, dt = "";
   try {
     vd = player.getVideoData() || {};
@@ -1742,7 +1778,7 @@ function renderDebug(g) {
     dt = player.getDebugText ? String(player.getDebugText()).slice(0, 400) : "";
   } catch (e) {
   }
-  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  durMismatch=" + g.durMismatch + "\nexpected id=" + curVid + "  reported id=" + vd.video_id + "\ntitle=" + (vd.title || "") + "  author=" + (vd.author || "") + "\n" + dt;
+  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  durMismatch=" + g.durMismatch + "\nexpected id=" + curVid + "  reported id=" + vd.video_id + "\ntitle=" + (vd.title || "") + "  author=" + (vd.author || "") + "\n" + dt;
 }
 let adMuted = false;
 function setAd(on) {
@@ -1971,6 +2007,10 @@ function pbAction(k) {
     case "cc":
       toggleCaptions();
       break;
+    case "ad":
+      forceAd();
+      hideOSD();
+      return;
   }
   updatePbButtons();
   showOSD(pState === 1 ? 5e3 : 0);
@@ -2056,12 +2096,14 @@ function playerKey(code) {
     // OK / space / play-pause
     case 415:
       if (player) {
+        wePaused = false;
         player.playVideo();
         flash("play");
       }
       break;
     case 19:
       if (player) {
+        wePaused = true;
         player.pauseVideo();
         flash("pause");
       }
@@ -2104,6 +2146,10 @@ function playerKey(code) {
       toggleCaptions();
       break;
     // yellow = captions
+    case 404:
+      forceAd();
+      break;
+    // green = 'there's an ad' helper
     default:
       if (isBack(code)) closePlayer();
   }
@@ -2387,23 +2433,29 @@ function remoteNotify(force) {
   clearTimeout(notifyT);
   notifyT = setTimeout(() => publishStatus(force), force ? 0 : 1500);
 }
+let limitedUntil = 0;
 function publishStatus(force) {
+  if (Date.now() < limitedUntil) return;
   const st = statusObj();
-  const key = JSON.stringify(Object.assign({}, st, { t: 0, pos: 0 }));
-  if (!force && key === lastSent && Date.now() - lastSentAt < 5 * 60 * 1e3) return;
-  if (!force && Date.now() - lastSentAt < 2500) {
-    remoteNotify();
+  const key = JSON.stringify(Object.assign({}, st, { t: 0, pos: 0, recent: 0 }));
+  if (!force && key === lastSent) return;
+  if (!force && Date.now() - lastSentAt < 8e3) {
+    clearTimeout(notifyT);
+    notifyT = setTimeout(() => publishStatus(false), 8e3 - (Date.now() - lastSentAt));
     return;
   }
   lastSent = key;
   lastSentAt = Date.now();
   try {
-    fetch(NTFY + "/" + topic("s"), { method: "POST", body: JSON.stringify(st) }).catch(() => {
+    fetch(NTFY + "/" + topic("s"), { method: "POST", body: JSON.stringify(st) }).then((r) => {
+      if (r.status === 429) limitedUntil = Date.now() + 30 * 60 * 1e3;
+    }).catch(() => {
     });
   } catch (e) {
   }
 }
 const seenCmd = {};
+let sseAliveAt = Date.now();
 let cmdSource = null;
 function listenRemote() {
   if (!REMOTE_ON || !window.EventSource) return;
@@ -2411,7 +2463,14 @@ function listenRemote() {
     if (cmdSource) cmdSource.close();
   } catch (e) {
   }
+  sseAliveAt = Date.now();
   cmdSource = new EventSource(NTFY + "/" + topic("c") + "/sse");
+  ["open", "keepalive"].forEach((t) => cmdSource.addEventListener(t, () => {
+    sseAliveAt = Date.now();
+  }));
+  cmdSource.onerror = () => {
+    if (cmdSource && cmdSource.readyState === 2) setTimeout(listenRemote, 5e3);
+  };
   cmdSource.onmessage = (ev) => {
     let m, c;
     try {
@@ -2433,6 +2492,7 @@ function onRemote(c) {
       break;
     case "pause":
       if (inPlayer) {
+        wePaused = true;
         try {
           player.pauseVideo();
         } catch (e) {
@@ -2442,6 +2502,7 @@ function onRemote(c) {
       break;
     case "play":
       if (inPlayer) {
+        wePaused = false;
         try {
           player.playVideo();
         } catch (e) {
@@ -2526,6 +2587,9 @@ function onRemote(c) {
       break;
     case "debug":
       toggleDebug();
+      break;
+    case "adhelp":
+      if (current === "player") forceAd();
       break;
     case "reloadChannels":
       lastListLoad = 0;
@@ -3040,6 +3104,7 @@ function init() {
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && current === "player" && player) {
+      wePaused = true;
       try {
         player.pauseVideo();
       } catch (e) {
@@ -3069,8 +3134,8 @@ function init() {
   });
   listenRemote();
   setInterval(() => {
-    if (!document.hidden) remoteNotify(true);
-  }, 5 * 60 * 1e3);
+    if (REMOTE_ON && Date.now() - sseAliveAt > 15e4) listenRemote();
+  }, 3e4);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       listenRemote();
