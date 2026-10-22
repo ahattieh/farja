@@ -473,3 +473,5 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 .pb-sep { width: .3rem; height: 7rem; background: rgba(255, 255, 255, .25); border-radius: 1rem; margin: 0 2rem; }
 .osd { padding-bottom: 4rem; }
 .osd-hints { display: none; }
+
+.dbg { font-size: 1.7rem !important; max-width: 150rem !important; }

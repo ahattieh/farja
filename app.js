@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.3.0";
+var VERSION = "2.3.1";
 const store = {
   get(k, d) {
     try {
@@ -1768,17 +1768,54 @@ function toggleDebug() {
   $("#dbg").classList.toggle("hidden", !dbgOn);
   if (dbgOn) renderDebug(adSignals());
 }
+const ytInfo = {}, ytKeysSeen = {};
+let tline = [];
+window.addEventListener("message", (ev) => {
+  if (!/youtube\.com$/.test(String(ev.origin).replace(/^https?:\/\//, "").replace(/^www\./, "www.").split(":")[0])) return;
+  let d = ev.data;
+  try {
+    if (typeof d === "string") d = JSON.parse(d);
+  } catch (e) {
+    return;
+  }
+  if (!d || typeof d !== "object") return;
+  const info = d.info && typeof d.info === "object" ? d.info : null;
+  ytKeysSeen["ev:" + d.event] = (ytKeysSeen["ev:" + d.event] || 0) + 1;
+  if (info) Object.keys(info).forEach((k) => {
+    const v = info[k];
+    ytInfo[k] = typeof v === "object" ? JSON.stringify(v).slice(0, 80) : v;
+    ytKeysSeen[k] = (ytKeysSeen[k] || 0) + 1;
+  });
+});
+setInterval(() => {
+  if (current !== "player" || !player) return;
+  let t = 0, ps = "";
+  try {
+    t = player.getCurrentTime();
+    ps = player.getPlayerState();
+  } catch (e) {
+  }
+  tline.push((+t).toFixed(1) + "/" + ps);
+  if (tline.length > 10) tline.shift();
+}, 1e3);
 function renderDebug(g, ps) {
-  let vd = {}, dt = "";
+  let vd = {}, extra = "";
   try {
     vd = player.getVideoData() || {};
   } catch (e) {
   }
-  try {
-    dt = player.getDebugText ? String(player.getDebugText()).slice(0, 400) : "";
-  } catch (e) {
-  }
-  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  durMismatch=" + g.durMismatch + "\nexpected id=" + curVid + "  reported id=" + vd.video_id + "\ntitle=" + (vd.title || "") + "  author=" + (vd.author || "") + "\n" + dt;
+  const q = (f) => {
+    try {
+      const r = player[f] ? player[f]() : "-";
+      return typeof r === "object" ? JSON.stringify(r).slice(0, 60) : r;
+    } catch (e) {
+      return "err";
+    }
+  };
+  extra = "loaded=" + q("getVideoLoadedFraction") + "  rate=" + q("getPlaybackRate") + "  quality=" + q("getPlaybackQuality") + "  levels=" + q("getAvailableQualityLevels") + "\nurl=" + q("getVideoUrl");
+  const skip = { currentTime: 1, currentTimeLastUpdated_: 1, videoBytesLoaded: 1, videoLoadedFraction: 1, mediaReferenceTime: 1, progressState: 1 };
+  const infoTxt = Object.keys(ytInfo).filter((k) => !skip[k]).map((k) => k + "=" + String(ytInfo[k]).slice(0, 40)).join("  ");
+  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  id=" + curVid + "/" + vd.video_id + "\ntimeline(t/state, 1s): " + tline.join("  ") + "\n" + extra + "\nyt: " + infoTxt.slice(0, 700) + "\nprogressState=" + String(ytInfo.progressState || "").slice(0, 120);
 }
 let adMuted = false;
 function setAd(on) {
