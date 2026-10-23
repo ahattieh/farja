@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.0";
+var VERSION = "3.0.0";
 const store = {
   get(k, d) {
     try {
@@ -1526,6 +1526,10 @@ function playAt(idx) {
     if (current === "player") closePlayer();
     return;
   }
+  if (useTvMode()) {
+    launchTv(v, idx);
+    return;
+  }
   playIdx = idx;
   curVid = v.id;
   pState = -1;
@@ -1538,6 +1542,7 @@ function playAt(idx) {
   updateFavBadge();
   updateOSD(0, v.dur);
   spinner(true);
+  $("#yt-wrap").classList.remove("hidden");
   if (current !== "player") show("player");
   $("#shield").focus();
   showOSD(4e3);
@@ -1749,6 +1754,24 @@ function closePlayer() {
   curVid = null;
   hideOSD();
   spinner(false);
+  if (lastFocus.retFrom && $("#yt-wrap").classList.contains("hidden")) {
+    $("#yt-wrap").classList.remove("hidden");
+    const from = lastFocus.retFrom;
+    lastFocus.retFrom = null;
+    if (from === "channel" && chs) {
+      show("channel");
+      focusFirstVideo();
+      return;
+    }
+    if (from === "search") {
+      openSearch();
+      return;
+    }
+    show("home");
+    renderHome();
+    focusHome(true);
+    return;
+  }
   if (playFrom === "search") {
     show("search");
     focusEl($('#sr-grid .v[data-i="' + playIdx + '"]') || $(".kb-key[data-k]"));
@@ -2424,6 +2447,11 @@ function renderSettings() {
   $("#restore-btn").classList.toggle("hidden", !removedIds().length);
   $$(".tog[data-k]").forEach((t) => t.classList.toggle("on", !!settings[t.getAttribute("data-k")]));
   renderTimeSettings();
+  const pm = $("#pm-btn");
+  if (pm) {
+    pm.classList.toggle("hidden", !(window.FARJA_NATIVE && window.FARJA_NATIVE.adblock));
+    $("#pm-val").textContent = settings.playerMode === "embed" ? "المشغّل العادي" : "بدون إعلانات";
+  }
   $("#set-foot").innerHTML = "مانع الإعلانات: " + (adblockSeenAt && Date.now() - adblockSeenAt < 6e5 ? '<span style="color:var(--green)">شغّال</span>' : window.FARJA_NATIVE ? '<span style="color:var(--orange)">مركّب، لسا ما اشتغل مع فيديو</span>' : '<span style="color:var(--coral)">مش مركّب (ركّب تطبيق التلفزيون الجديد)</span>') + " · نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
 }
 function renderTimeSettings() {
@@ -2972,6 +3000,139 @@ function cycleKidColor(id) {
   renderKidChip();
   focusEl($('#kid-list [data-kcolor="' + id + '"]'));
 }
+function useTvMode() {
+  if (QS.has("tvmode")) return true;
+  return !!(window.FARJA_NATIVE && window.FARJA_NATIVE.adblock) && settings.playerMode !== "embed" && !DEMO;
+}
+const slimV = (v) => ({ id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, parentOk: v.parentOk || void 0, ch: v.ch ? { id: v.ch.id, title: v.ch.title } : null });
+function launchTv(v, idx) {
+  const h = histGet(v.id);
+  const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
+  const state = {
+    at: Date.now(),
+    kid: kidId,
+    playFrom,
+    playIdx: idx,
+    from: current === "player" ? lastFocus.retFrom || "home" : current,
+    chId: chs && chs.ch && chs.ch.id,
+    chTab: chs && chs.tab,
+    plMeta: chs && chs.tab === "pl" ? chs.pl.meta : null,
+    homeKey: lastFocus.homeKey,
+    list: playList.slice(Math.max(0, idx - 5), idx + 30).map(slimV),
+    offset: Math.max(0, idx - 5)
+  };
+  lastFocus.retFrom = state.from;
+  try {
+    sessionStorage.setItem("farja.tv", JSON.stringify(state));
+  } catch (e) {
+  }
+  const st = statusObj();
+  delete st.recent;
+  const ctx = {
+    farja: 1,
+    id: v.id,
+    title: v.title,
+    chTitle: v.ch && v.ch.title || "",
+    thumb: v.thumb,
+    dur: v.dur || 0,
+    resume,
+    left: limitOn() ? Math.max(0, Math.floor(remainingSec())) : null,
+    ret: location.href.split("#")[0],
+    room: REMOTE_ON ? room : "",
+    ntfy: NTFY,
+    status: st
+  };
+  try {
+    window.name = JSON.stringify(ctx);
+  } catch (e) {
+  }
+  histSaveTv(v, resume, v.dur || 0);
+  $("#tv-launch-title").textContent = v.title;
+  show("tvlaunch");
+  setTimeout(() => {
+    location.href = "https://www.youtube.com/tv#/watch?v=" + encodeURIComponent(v.id) + (resume ? "&t=" + resume + "s" : "");
+  }, 350);
+}
+function histSaveTv(v, pos, dur) {
+  const e = Object.assign(slimVideo(v), { pos: Math.floor(pos), dur: Math.floor(dur), seen: Date.now() });
+  hist = [e].concat(hist.filter((x) => x.id !== v.id)).slice(0, 40);
+  store.set(pk("hist"), hist);
+}
+function handleTvReturn() {
+  const m = /#ret=([^&]+)/.exec(location.hash);
+  if (!m) return false;
+  let r = null, st = null;
+  try {
+    r = JSON.parse(decodeURIComponent(m[1]));
+  } catch (e) {
+  }
+  try {
+    st = JSON.parse(sessionStorage.getItem("farja.tv") || "null");
+  } catch (e) {
+  }
+  try {
+    history.replaceState(null, "", location.pathname + location.search);
+  } catch (e) {
+  }
+  if (!r || !st) return false;
+  if (st.kid && st.kid !== kidId && kids.some((k) => k.id === st.kid)) {
+    kidId = st.kid;
+    usage = store.get(pk("usage"), null);
+    hist = store.get(pk("hist"), []);
+    favs = store.get(pk("favs"), []);
+    favCh = store.get(pk("favCh"), []);
+  }
+  if (r.watched) {
+    addWatch(+r.watched);
+    saveUsage();
+  }
+  playFrom = st.playFrom;
+  playList = st.list.map((v2) => Object.assign({}, v2, { ch: v2.ch && (channels.find((c) => c.id === v2.ch.id) || v2.ch) }));
+  playIdx = st.playIdx - st.offset;
+  const v = playList[playIdx];
+  if (v) histSaveTv(v, r.ended ? r.dur || v.dur : r.pos || 0, r.dur || v.dur || 0);
+  lastFocus.homeKey = st.homeKey;
+  lastFocus.retFrom = st.from;
+  const goBackToList = () => {
+    if (st.from === "channel" && st.chId && channels.some((c) => c.id === st.chId)) {
+      openChannel(st.chId);
+      if (st.chTab === "pl" && st.plMeta) setTab("pl", st.plMeta);
+    } else if (st.from === "search") {
+      openSearch();
+    } else {
+      show("home");
+      renderHome();
+      focusHome(true);
+    }
+  };
+  if (r.timeup || remainingSec() <= 0) {
+    goBackToList();
+    timeUp();
+    return true;
+  }
+  if (r.cmd) {
+    goBackToList();
+    setTimeout(() => onRemote(r.cmd), 300);
+    return true;
+  }
+  if (r.next && playList[playIdx + 1]) {
+    playAt(playIdx + 1);
+    return true;
+  }
+  if (r.prev && playIdx > 0) {
+    playAt(playIdx - 1);
+    return true;
+  }
+  if (r.ended && v) {
+    curVid = v.id;
+    show("player");
+    $("#yt-wrap").classList.add("hidden");
+    onEnded();
+    return true;
+  }
+  goBackToList();
+  return true;
+}
 function onKey(e) {
   const code = e.keyCode;
   const t = document.activeElement;
@@ -3183,6 +3344,13 @@ function onClick(e) {
     });
     return;
   }
+  if (b.id === "pm-btn") {
+    settings.playerMode = settings.playerMode === "embed" ? "tv" : "embed";
+    saveSettings();
+    renderSettings();
+    focusEl($("#pm-btn"));
+    return;
+  }
   if (b.id === "limit-btn") {
     settings.dailyLimit = LIMITS[(LIMITS.indexOf(settings.dailyLimit) + 1) % LIMITS.length];
     saveSettings();
@@ -3341,6 +3509,18 @@ function start() {
   renderKidChip();
   loadChannels().then(() => {
     renderHome();
+    if (/#ret=/.test(location.hash)) {
+      show("tvlaunch");
+      $("#tv-launch-title").textContent = "";
+      return loadFeed().then(() => {
+        if (!handleTvReturn()) {
+          show("home");
+          renderHome();
+          focusHome(true);
+        }
+        return refreshHomeData();
+      });
+    }
     if (current === "home") {
       if (kids.length >= 2 && !locked) openKids();
       else focusHome(true);
