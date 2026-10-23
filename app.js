@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.2";
+var VERSION = "2.6.3";
 const store = {
   get(k, d) {
     try {
@@ -1847,7 +1847,47 @@ function adSkip() {
   } catch (e) {
   }
 }
+// Experiment: the first time a real ad shows in a video, throw the whole YouTube player away and
+// build a fresh one at the same second. Only once per video, so it can never loop.
+let freshTried = null, adLog = [];
+function adNote(msg) {
+  adLog.push(new Date().toTimeString().slice(0, 8) + " " + msg);
+  adLog = adLog.slice(-25);
+  if (REMOTE_ON && RELAY) relayPub("l", { v: VERSION, log: adLog }).catch(() => {
+  });
+}
+function adFreshPlayer(why) {
+  const v = playList[playIdx];
+  if (!v || freshTried === v.id) return false;
+  freshTried = v.id;
+  const at = Math.floor(lastContentT || 0) || (histGet(v.id) && histGet(v.id).pos > 20 ? Math.floor(histGet(v.id).pos) : 0);
+  adNote("ad (" + why + ") in " + v.id + " -> fresh player at " + at + "s");
+  try {
+    player.destroy();
+  } catch (e) {
+  }
+  player = null;
+  playerReady = null;
+  if (!document.getElementById("yt")) {
+    const d = document.createElement("div");
+    d.id = "yt";
+    $("#yt-wrap").appendChild(d);
+  }
+  contentOk = false;
+  contentTicks = 0;
+  playStartAt = Date.now();
+  adLastT = -1;
+  adFrozenAt = 0;
+  ensurePlayer().then((p) => {
+    if (curVid !== v.id || current !== "player") return;
+    if (at) p.loadVideoById({ videoId: v.id, startSeconds: at });
+    else p.loadVideoById(v.id);
+  }).catch(() => {
+  });
+  return true;
+}
 function resetAdWatch() {
+  freshTried = null;
   contentOk = false;
   contentTicks = 0;
   lastContentT = 0;
@@ -1922,8 +1962,22 @@ function watchForAd() {
     isAd = false;
     adForced = false;
   }
+  // a real ad (not just "still loading"): the clock runs on a different duration, or jumped back
+  const realAd = ps === 1 && (g.durMismatch || contentOk && lastContentT > 8 && g.t < lastContentT - 5 && Date.now() - lastSeekAt > 3e3);
+  if (realAd && Date.now() - playStartAt > 1500) {
+    const v0 = playList[playIdx];
+    if (v0 && freshTried !== v0.id) {
+      if (!adMode) setAd(true);
+      adFreshPlayer(g.durMismatch ? "dur " + Math.round(g.d) + "s" : "jump");
+      return;
+    }
+    if (v0 && !adMode) adNote("ad came back in " + v0.id + " after fresh player; covering until it ends");
+  }
   if (isAd && !adMode) setAd(true);
-  else if (!isAd && adMode) setAd(false);
+  else if (!isAd && adMode) {
+    setAd(false);
+    if (freshTried) adNote("video back at " + Math.round(g.t) + "s");
+  }
   if (adMode) {
     const left = g.durMismatch && g.d > g.t ? Math.ceil(g.d - g.t) : 0;
     const txt = left > 0 && left < 400 ? "الفيديو راجع بعد " + left + " ثانية" : "";
