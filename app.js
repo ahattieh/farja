@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.5";
+var VERSION = "2.6.6";
 const store = {
   get(k, d) {
     try {
@@ -1966,7 +1966,8 @@ function watchForAd() {
   // on the real TV a pre-roll ad keeps YouTube's state at -1 ("unstarted") while it plays
   const stuckStart = !contentOk && (ps === -1 || ps === 5) && Date.now() - playStartAt > 4e3;
   const realAd = ps === 1 && (g.durMismatch || contentOk && lastContentT > 8 && g.t < lastContentT - 5 && Date.now() - lastSeekAt > 3e3) || stuckStart;
-  if (realAd && Date.now() - playStartAt > 1500) {
+  // (2.6.3 experiment: rebuilding the player did not stop YouTube's ads on the real TV, so it is off)
+  if (false && realAd && Date.now() - playStartAt > 1500) {
     const v0 = playList[playIdx];
     if (v0 && freshTried !== v0.id) {
       if (!adMode) setAd(true);
