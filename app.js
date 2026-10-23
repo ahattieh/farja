@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.5.1";
+var VERSION = "2.6.0";
 const store = {
   get(k, d) {
     try {
@@ -1486,6 +1486,7 @@ class FakePlayer {
         this.midUntil = Date.now() + 5e3;
       }
       if (this.midUntil && Date.now() < this.midUntil) return;
+      if (this._realAd()) return;
       this.t += 0.25;
       if (this.t >= this.d) {
         this.t = this.d;
@@ -1514,10 +1515,27 @@ class FakePlayer {
   seekTo(s) {
     this.t = clamp(s, 0, this.d);
   }
+  _realAd() {
+    // ?demoreal: ads like the real TV — state 1, clock running on the ad's own duration
+    if (!QS.has("demoreal") || this.st !== 1) return null;
+    if (!this.preAt) this.preAt = Date.now();
+    const pre = (Date.now() - this.preAt) / 1e3;
+    if (pre < 6) return { t: pre, d: 15 };
+    if (this.t >= 12 && !this.midAt) this.midAt = Date.now();
+    if (this.midAt) {
+      const m = (Date.now() - this.midAt) / 1e3;
+      if (m < 6) return { t: m, d: 20 };
+    }
+    return null;
+  }
   getCurrentTime() {
+    const a = this._realAd();
+    if (a) return a.t;
     return this.t;
   }
   getDuration() {
+    const a = this._realAd();
+    if (a) return a.d;
     return this.d;
   }
   getPlayerState() {
@@ -1814,7 +1832,12 @@ function togglePlay() {
   }
 }
 let adMode = false, adLastT = -1, adFrozenAt = 0;
+let contentOk = false, contentTicks = 0, lastContentT = 0, playStartAt = 0, lastSeekAt = 0;
 function resetAdWatch() {
+  contentOk = false;
+  contentTicks = 0;
+  lastContentT = 0;
+  playStartAt = Date.now();
   adLastT = -1;
   adFrozenAt = 0;
   unstartedAt = 0;
@@ -1869,12 +1892,30 @@ function watchForAd() {
     if (moving) adForced = false;
     else isAd = true;
   }
+  // Keep the screen covered from the start until we are sure the real video is playing
+  // (moving clock, YouTube's duration equals the video's own duration), so pre-roll ads never show.
+  const moving = ps === 1 && !adFrozenAt;
+  if (!contentOk) {
+    if (moving && !g.durMismatch && g.t > 0.2) {
+      if (++contentTicks >= 3) contentOk = true;
+    } else contentTicks = 0;
+    if (!contentOk && Date.now() - playStartAt < 25e3 && !(ps === 2 && wePaused)) isAd = true;
+  }
+  // mid-roll: YouTube's clock jumps back to the ad's own 0:00
+  if (contentOk && ps === 1 && lastContentT > 8 && g.t < lastContentT - 5 && Date.now() - lastSeekAt > 3e3) isAd = true;
+  if (contentOk && moving && !g.durMismatch && !isAd) lastContentT = Math.max(lastContentT, g.t);
   if (ps === 2 && wePaused || ps === 0) {
     isAd = false;
     adForced = false;
   }
   if (isAd && !adMode) setAd(true);
   else if (!isAd && adMode) setAd(false);
+  if (adMode) {
+    const left = g.durMismatch && g.d > g.t ? Math.ceil(g.d - g.t) : 0;
+    const txt = left > 0 && left < 400 ? "الفيديو راجع بعد " + left + " ثانية" : "";
+    const el = $("#ad-left");
+    if (el && el.textContent !== txt) el.textContent = txt;
+  }
   if (dbgOn) renderDebug(g, ps);
 }
 let dbgOn = false, dbgKeys = [];
@@ -1937,6 +1978,7 @@ function setAd(on) {
   if (adMode === on) return;
   adMode = on;
   $("#player").classList.toggle("ad", on);
+  $("#player").classList.toggle("full", on && settings.adCover !== "skip");
   $("#p-ad").classList.toggle("hidden", !on);
   if (on) {
     hideOSD();
@@ -1949,6 +1991,7 @@ function setAd(on) {
     } catch (e) {
     }
   } else if (adMuted) {
+    $("#ad-left").textContent = "";
     adMuted = false;
     try {
       player.unMute();
@@ -1964,6 +2007,8 @@ function seekBy(d) {
   try {
     const dur = player.getDuration() || 0;
     const t = clamp(player.getCurrentTime() + d, 0, Math.max(0, dur - 1));
+    lastSeekAt = Date.now();
+    lastContentT = 0;
     player.seekTo(t, true);
     updateOSD(t, dur);
   } catch (e) {
@@ -2079,6 +2124,8 @@ function initPointer() {
     try {
       const d = player.getDuration() || 0;
       if (d) {
+        lastSeekAt = Date.now();
+        lastContentT = 0;
         player.seekTo(p * d, true);
         updateOSD(p * d, d);
         adLastT = -1;
@@ -2392,6 +2439,7 @@ function renderSettings() {
   renderSchedSettings();
   renderCatSettings();
   $("#eb-val").textContent = settings.eyeBreak ? "كل " + settings.eyeBreak + " دقيقة" : "مطفي";
+  $("#adc-val").textContent = settings.adCover === "skip" ? "خلّي زر التخطي ظاهر" : "غطّي كل الشاشة";
   renderKidChans();
   $("#restore-btn").classList.toggle("hidden", !removedIds().length);
   $$(".tog[data-k]").forEach((t) => t.classList.toggle("on", !!settings[t.getAttribute("data-k")]));
@@ -3781,6 +3829,12 @@ function onClickPlus(b, act) {
   if (b.hasAttribute("data-sch")) {
     const p = b.getAttribute("data-sch").split("|");
     schedStep(p[0], +p[1]);
+    return true;
+  }
+  if (b.id === "adc-btn") {
+    settings.adCover = settings.adCover === "skip" ? "full" : "skip";
+    saveSettings();
+    $("#adc-val").textContent = settings.adCover === "skip" ? "خلّي زر التخطي ظاهر" : "غطّي كل الشاشة";
     return true;
   }
   if (b.id === "eb-btn") {

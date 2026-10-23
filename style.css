@@ -622,3 +622,11 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 .empty.dark { color: var(--white); padding: 4rem 0; }
 .empty.dark p { font-size: 3rem; }
 .cat-tog small { font-size: 2.2rem; color: var(--soft); font-weight: 600; }
+
+/* ---------- 2.6: cover the whole screen during ads (kids never see the ad) ---------- */
+#player.ad.full #yt-wrap { left: 0; top: 0; width: 100%; height: 100%; }
+#player.ad.full #shield, #player.ad.full #shield2 { display: block; left: 0; top: 0; bottom: auto; width: 100%; height: 100%; z-index: 5; background: radial-gradient(ellipse at 50% 30%, #3b2a8a 0%, #1c1550 55%, #110d33 100%); }
+#player.ad.full #ad-frame, #player.ad.full .ad-skip-hint { display: none !important; }
+#player.ad.full .p-ad { height: 100%; z-index: 6; }
+#player.ad.full .ad-wait svg { width: 18rem; height: 18rem; }
+.ad-left { margin-top: 2.6rem; font-size: 3.4rem; font-weight: 800; color: var(--yellow); min-height: 4.4rem; }
