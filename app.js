@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.0.1";
+var VERSION = "3.0.2";
 const store = {
   get(k, d) {
     try {
@@ -3060,7 +3060,7 @@ function launchTv(v, idx) {
   $("#tv-launch-title").textContent = v.title;
   show("tvlaunch");
   setTimeout(() => {
-    location.href = "https://www.youtube.com/tv#/watch?v=" + encodeURIComponent(v.id) + (resume ? "&t=" + resume + "s" : "");
+    location.href = "https://www.youtube.com/tv?env_forceFullAnimation=1&env_enableWebSpeech=1&env_enableVoice=1&v=" + encodeURIComponent(v.id) + (resume ? "&t=" + resume : "") + "#/";
   }, 350);
 }
 function histSaveTv(v, pos, dur) {
