@@ -653,3 +653,4 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 #player.ad.full { background: #1b1449; }
 #player.ad.full .ad-wait .ad-skip-btn svg { width: 5rem; height: 5rem; animation: none; }
 #player.ad, #player.ad #shield, #player.ad #shield2 { background: #1b1449; }
+.brand-corner .ver { margin-right: 1.6rem; font-size: 2.2rem; font-weight: 700; color: rgba(255, 255, 255, .55); }

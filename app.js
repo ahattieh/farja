@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.4";
+var VERSION = "2.6.5";
 const store = {
   get(k, d) {
     try {
@@ -3856,6 +3856,8 @@ function homeScrollTo(el) {
   rows.forEach((r) => r.classList.toggle("past", r.offsetTop < row.offsetTop));
 }
 function tickClock() {
+  const hv = $("#home-ver");
+  if (hv && !hv.textContent) hv.textContent = "v" + VERSION;
   const d = new Date();
   const el = $("#clock");
   if (el) el.textContent = pad2(d.getHours() % 12 || 12) + ":" + pad2(d.getMinutes());
