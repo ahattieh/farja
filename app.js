@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.1";
+var VERSION = "2.6.2";
 const store = {
   get(k, d) {
     try {
@@ -1833,26 +1833,18 @@ function togglePlay() {
 }
 let adMode = false, adLastT = -1, adFrozenAt = 0;
 let contentOk = false, contentTicks = 0, lastContentT = 0, playStartAt = 0, lastSeekAt = 0;
-// Our own big "skip": reload the video at the spot where the real video was (YouTube's own
-// Skip button can't be pressed from our page). The screen stays covered until the video is back.
-let adSkipAt = 0;
+// YouTube's own Skip button lives inside its player and can't be pressed from our page, and
+// reloading the video just brings the ad back. So our big button opens a window on YouTube's
+// Skip corner (zoomed, framed in yellow) for this ad only, so it can be pressed with the remote pointer.
+let adShowSkip = false;
 function adSkip() {
-  const v = playList[playIdx];
-  if (!v || !player || Date.now() - adSkipAt < 4e3) return;
-  adSkipAt = Date.now();
-  const at = Math.floor(lastContentT || 0) || (histGet(v.id) ? Math.floor(histGet(v.id).pos || 0) : 0);
-  contentOk = false;
-  contentTicks = 0;
-  playStartAt = Date.now();
-  adForced = false;
+  if (!adMode || adShowSkip) return;
+  adShowSkip = true;
+  $("#player").classList.remove("full");
   try {
-    player.loadVideoById({ videoId: v.id, startSeconds: at });
+    const f = $("#yt-wrap iframe");
+    if (f) f.focus();
   } catch (e) {
-  }
-  const b = $("#ad-skip");
-  if (b) {
-    b.classList.add("busy");
-    setTimeout(() => b.classList.remove("busy"), 4e3);
   }
 }
 function resetAdWatch() {
@@ -2000,7 +1992,8 @@ function setAd(on) {
   if (adMode === on) return;
   adMode = on;
   $("#player").classList.toggle("ad", on);
-  $("#player").classList.toggle("full", on && settings.adCover !== "skip");
+  if (!on) adShowSkip = false;
+  $("#player").classList.toggle("full", on && settings.adCover !== "skip" && !adShowSkip);
   $("#p-ad").classList.toggle("hidden", !on);
   if (on) {
     hideOSD();
