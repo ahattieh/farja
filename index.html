@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.3.1">
+<link rel="stylesheet" href="style.css?v=2.6.0">
 </head>
 <body>
 
@@ -137,11 +137,10 @@
     </div>
   </div>
   <div id="p-end" class="p-end hidden">
-    <div class="next-card">
-      <p class="next-lbl">الفيديو الجاي بعد <b id="next-count">5</b></p>
-      <div class="next-th"><img id="next-img" alt=""></div>
-      <p class="next-title" id="next-title"></p>
-      <p class="next-hint"><kbd>OK</kbd> شغّله هلّق &nbsp;·&nbsp; <kbd>رجوع</kbd> للقائمة</p>
+    <div class="end-wrap">
+      <p class="end-lbl" id="end-lbl"></p>
+      <div id="end-grid" class="end-grid"></div>
+      <p class="next-hint"><kbd>OK</kbd> شغّل &nbsp;·&nbsp; <kbd dir="ltr">◀ ▲ ▼ ▶</kbd> اختار &nbsp;·&nbsp; <kbd>رجوع</kbd> للقائمة</p>
     </div>
   </div>
   <div id="p-err" class="p-err hidden"><div class="p-err-box"><p id="p-err-msg"></p><p class="next-hint"><kbd>رجوع</kbd> للقائمة</p></div></div>
@@ -267,7 +266,7 @@
 <div id="toast" class="toast"></div>
 <div id="remote-msg" class="remote-msg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="var(--yellow)"/></svg><p id="remote-msg-text"></p></div>
 
-<script src="config.js?v=2.3.1"></script>
-<script src="app.js?v=2.3.1"></script>
+<script src="config.js?v=2.6.0"></script>
+<script src="app.js?v=2.6.0"></script>
 </body>
 </html>

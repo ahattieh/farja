@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.3.1";
+var VERSION = "2.6.0";
 const store = {
   get(k, d) {
     try {
@@ -1422,6 +1422,10 @@ class FakePlayer {
   loadVideoById(arg) {
     const id = typeof arg === "object" ? arg.videoId : arg;
     const v = playList.find((x) => x.id === id) || { title: "", dur: 60 };
+    if (QS.has("demoad2")) {
+      this.ad2Start = Date.now();
+      this.ad2Until = Date.now() + 6e3;
+    }
     this.vid = id;
     this.t = typeof arg === "object" && arg.startSeconds || 0;
     this.d = v.dur;
@@ -1482,6 +1486,13 @@ class FakePlayer {
     this.t = clamp(s, 0, this.d);
   }
   getCurrentTime() {
+    if (QS.has("demoad2") && this.ad2Until && Date.now() < this.ad2Until) {
+      handleYtInfo({ progressState: { allowSeeking: false } });
+      return (Date.now() - this.ad2Start) / 1e3;
+    }
+    if (QS.has("demoad2") && this.ad2Until) {
+      handleYtInfo({ progressState: { allowSeeking: true } });
+    }
     return this.t;
   }
   getDuration() {
@@ -1535,6 +1546,8 @@ function playAt(idx) {
     const h = histGet(v.id);
     const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
     if (resume) {
+      contentT = resume;
+      lastSeekAt = Date.now();
       p.loadVideoById({ videoId: v.id, startSeconds: resume });
       toast("كمّلنا من " + fmtTime(resume));
     } else p.loadVideoById(v.id);
@@ -1603,28 +1616,115 @@ function hideErr() {
   clearTimeout(errT);
   $("#p-err").classList.add("hidden");
 }
+let endSugs = [], endSel = 0, endNextIdx = -1;
+function buildSuggestions(cur) {
+  const seen = {};
+  seen[cur.id] = 1;
+  const watched = {};
+  hist.forEach((h) => {
+    if (h.dur && h.pos >= h.dur - 20) watched[h.id] = 1;
+  });
+  const out = [];
+  const add = (v) => {
+    if (v && !seen[v.id] && out.length < 8) {
+      seen[v.id] = 1;
+      out.push(v);
+    }
+  };
+  const next = playList[playIdx + 1];
+  if (next) add(next);
+  const chId = videoChannelId(cur);
+  const ch = channels.find((c) => c.id === chId);
+  const fresh = (list) => list.filter((v) => !watched[v.id]);
+  if (ch) fresh(visible(feedData[ch.id] || [])).slice(0, 3).forEach((v) => add(Object.assign({}, v, { ch })));
+  const others = channels.filter((c) => c.id !== chId).sort((x, y) => (isFavCh(y.id) ? 1 : 0) - (isFavCh(x.id) ? 1 : 0));
+  for (let round = 0; out.length < 8 && round < 4; round++) {
+    others.forEach((c) => {
+      const v = fresh(visible(feedData[c.id] || []))[round];
+      if (v) add(Object.assign({}, v, { ch: c }));
+    });
+  }
+  if (ch) visible(feedData[ch.id] || []).forEach((v) => add(Object.assign({}, v, { ch })));
+  return out;
+}
 function onEnded() {
   histSave(true, true);
-  const next = playList[playIdx + 1];
-  if (!settings.autoNext || !next) {
+  const cur = playList[playIdx] || {};
+  endSugs = buildSuggestions(cur);
+  endNextIdx = playList[playIdx + 1] && endSugs[0] && endSugs[0].id === playList[playIdx + 1].id ? 0 : -1;
+  if (!endSugs.length) {
     closePlayer();
     return;
   }
-  $("#next-img").src = next.thumb;
-  $("#next-title").textContent = next.title;
-  endCount = 5;
-  $("#next-count").textContent = endCount;
-  $("#p-end").classList.remove("hidden");
+  $("#end-grid").innerHTML = endSugs.map(
+    (v, i) => '<button class="es" data-es="'.concat(i, '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(i === endNextIdx ? '<span class="es-next">التالي</span>' : "", '</span><span class="tt">').concat(esc(v.title), '</span><span class="meta">').concat(esc(v.ch && v.ch.title || ""), "</span></button>")
+  ).join("");
+  endSel = 0;
+  endMark();
   hideOSD();
+  $("#p-end").classList.remove("hidden");
   clearInterval(endT);
   endT = setInterval(() => {
-    endCount--;
-    $("#next-count").textContent = Math.max(0, endCount);
-    if (endCount <= 0) {
-      clearEnd();
-      playAt(playIdx + 1);
-    }
-  }, 1e3);
+  }, 1e9);
+  if (settings.autoNext && endNextIdx === 0) {
+    endCount = 8;
+    endLabel();
+    clearInterval(endT);
+    endT = setInterval(() => {
+      endCount--;
+      endLabel();
+      if (endCount <= 0) endPlay(0);
+    }, 1e3);
+  } else {
+    endCount = -1;
+    endLabel();
+  }
+  remoteNotify();
+}
+function endLabel() {
+  $("#end-lbl").innerHTML = endCount > 0 ? "الفيديو التالي بعد <b>" + endCount + "</b>" : "شو بدك تشوف كمان؟";
+}
+function endStopCountdown() {
+  if (endCount > 0) {
+    endCount = -1;
+    clearInterval(endT);
+    endT = setInterval(() => {
+    }, 1e9);
+    endLabel();
+  }
+}
+function endMark() {
+  $$("#end-grid .es").forEach((b, i) => b.classList.toggle("sel", i === endSel));
+}
+function endPlay(i) {
+  const v = endSugs[i];
+  if (!v) return;
+  clearEnd();
+  if (i === endNextIdx) {
+    playAt(playIdx + 1);
+    return;
+  }
+  const rest = visible(feedData[v.ch.id] || []).filter((x) => x.id !== v.id).map((x) => Object.assign({}, x, { ch: v.ch }));
+  playFrom = "c:" + v.ch.id;
+  playList = [v].concat(rest);
+  playAt(0);
+}
+function endKey(code) {
+  const cols = 4;
+  if (code >= 37 && code <= 40) {
+    endStopCountdown();
+    if (code === 37) endSel = Math.min(endSugs.length - 1, endSel + 1);
+    if (code === 39) endSel = Math.max(0, endSel - 1);
+    if (code === 40 && endSel + cols < endSugs.length) endSel += cols;
+    if (code === 38 && endSel - cols >= 0) endSel -= cols;
+    endMark();
+    return;
+  }
+  if (code === 13 || code === 415 || code === 32) {
+    endPlay(endSel);
+    return;
+  }
+  if (isBack(code)) closePlayer();
 }
 function clearEnd() {
   clearInterval(endT);
@@ -1706,6 +1806,9 @@ function resetAdWatch() {
   oddSince = 0;
   adForced = false;
   wePaused = false;
+  contentT = 0;
+  ytSeekable = null;
+  lastSeekAt = Date.now();
   setAd(false);
 }
 function adSignals() {
@@ -1719,6 +1822,7 @@ function adSignals() {
   return { t, d, exp, durMismatch: !!(exp && d > 1 && Math.abs(d - exp) > 3) };
 }
 let unstartedAt = 0;
+let contentT = 0, lastSeekAt = 0;
 let wePaused = false, oddSince = 0, adForced = false, adForcedAt = 0;
 function forceAd() {
   adForced = true;
@@ -1749,6 +1853,11 @@ function watchForAd() {
   oddSince = odd ? oddSince || Date.now() : 0;
   const limit = ps === 3 ? 3500 : ps === 2 ? 1500 : 1200;
   let isAd = oddSince && Date.now() - oddSince > limit || g.durMismatch;
+  if (ytSeekable === false && Date.now() - ytSeekableAt < 5e3 && (ps === 1 || ps === 3 || ps === -1)) isAd = true;
+  const sinceSeek = Date.now() - lastSeekAt;
+  if (contentT > 20 && sinceSeek > 2500 && g.t < contentT - 8) isAd = true;
+  if (!isAd && ps === 1 && !adMode) contentT = Math.max(contentT, g.t);
+  if (!isAd && ps === 1 && adMode && Math.abs(g.t - contentT) < 8) contentT = g.t;
   if (adForced) {
     const moving = ps === 1 && !adFrozenAt && Date.now() - adForcedAt > 3e3;
     if (moving) adForced = false;
@@ -1769,8 +1878,33 @@ function toggleDebug() {
   if (dbgOn) renderDebug(adSignals());
 }
 const ytInfo = {}, ytKeysSeen = {};
+let ytSeekable = null, ytSeekableAt = 0;
+function handleYtInfo(info) {
+  let ps = info.progressState;
+  if (typeof ps === "string") {
+    try {
+      ps = JSON.parse(ps);
+    } catch (e) {
+      ps = null;
+    }
+  }
+  if (ps && typeof ps === "object" && "allowSeeking" in ps) {
+    ytSeekable = !!ps.allowSeeking;
+    ytSeekableAt = Date.now();
+  }
+}
 let tline = [];
+let adblockSeenAt = 0, adblockRemoved = 0;
 window.addEventListener("message", (ev) => {
+  try {
+    const m = typeof ev.data === "string" && ev.data.indexOf('"farja"') > 0 ? JSON.parse(ev.data) : null;
+    if (m && m.farja === "adblock") {
+      adblockSeenAt = Date.now();
+      adblockRemoved = m.removed || 0;
+      return;
+    }
+  } catch (e) {
+  }
   if (!/youtube\.com$/.test(String(ev.origin).replace(/^https?:\/\//, "").replace(/^www\./, "www.").split(":")[0])) return;
   let d = ev.data;
   try {
@@ -1781,6 +1915,7 @@ window.addEventListener("message", (ev) => {
   if (!d || typeof d !== "object") return;
   const info = d.info && typeof d.info === "object" ? d.info : null;
   ytKeysSeen["ev:" + d.event] = (ytKeysSeen["ev:" + d.event] || 0) + 1;
+  if (info) handleYtInfo(info);
   if (info) Object.keys(info).forEach((k) => {
     const v = info[k];
     ytInfo[k] = typeof v === "object" ? JSON.stringify(v).slice(0, 80) : v;
@@ -1815,7 +1950,7 @@ function renderDebug(g, ps) {
   extra = "loaded=" + q("getVideoLoadedFraction") + "  rate=" + q("getPlaybackRate") + "  quality=" + q("getPlaybackQuality") + "  levels=" + q("getAvailableQualityLevels") + "\nurl=" + q("getVideoUrl");
   const skip = { currentTime: 1, currentTimeLastUpdated_: 1, videoBytesLoaded: 1, videoLoadedFraction: 1, mediaReferenceTime: 1, progressState: 1 };
   const infoTxt = Object.keys(ytInfo).filter((k) => !skip[k]).map((k) => k + "=" + String(ytInfo[k]).slice(0, 40)).join("  ");
-  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  id=" + curVid + "/" + vd.video_id + "\ntimeline(t/state, 1s): " + tline.join("  ") + "\n" + extra + "\nyt: " + infoTxt.slice(0, 700) + "\nprogressState=" + String(ytInfo.progressState || "").slice(0, 120);
+  $("#dbg").textContent = "adblock=" + (adblockSeenAt && Date.now() - adblockSeenAt < 8e3 ? "ON removed=" + adblockRemoved : window.FARJA_NATIVE ? "app-only" : "off") + "  v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  id=" + curVid + "/" + vd.video_id + "\ntimeline(t/state, 1s): " + tline.join("  ") + "\n" + extra + "\nyt: " + infoTxt.slice(0, 700) + "\nprogressState=" + String(ytInfo.progressState || "").slice(0, 120) + "\nseekable=" + ytSeekable + "  contentT=" + contentT.toFixed(1);
 }
 let adMuted = false;
 function setAd(on) {
@@ -1845,6 +1980,8 @@ function setAd(on) {
 function seekBy(d) {
   adLastT = -1;
   adFrozenAt = 0;
+  lastSeekAt = Date.now();
+  contentT = 0;
   if (!player) return;
   try {
     const dur = player.getDuration() || 0;
@@ -1945,6 +2082,18 @@ function initPointer() {
     reclaimFocus();
     if (!adMode) showOSD(pState === 1 ? 3500 : 0);
   });
+  $("#end-grid").addEventListener("click", (e) => {
+    const b = e.target.closest(".es");
+    if (b) endPlay(+b.getAttribute("data-es"));
+  });
+  $("#end-grid").addEventListener("mouseover", (e) => {
+    const b = e.target.closest(".es");
+    if (b) {
+      endStopCountdown();
+      endSel = +b.getAttribute("data-es");
+      endMark();
+    }
+  });
   $("#osd-btns").addEventListener("click", (e) => {
     const b = e.target.closest(".pbtn");
     if (b) {
@@ -1964,6 +2113,8 @@ function initPointer() {
     try {
       const d = player.getDuration() || 0;
       if (d) {
+        lastSeekAt = Date.now();
+        contentT = 0;
         player.seekTo(p * d, true);
         updateOSD(p * d, d);
         adLastT = -1;
@@ -2089,10 +2240,7 @@ function playerKey(code) {
     return;
   }
   if (endT) {
-    if (code === 13 || code === 415 || code === 32) {
-      clearEnd();
-      playAt(playIdx + 1);
-    } else if (isBack(code)) closePlayer();
+    endKey(code);
     return;
   }
   if (!$("#p-err").classList.contains("hidden")) {
@@ -2276,7 +2424,7 @@ function renderSettings() {
   $("#restore-btn").classList.toggle("hidden", !removedIds().length);
   $$(".tog[data-k]").forEach((t) => t.classList.toggle("on", !!settings[t.getAttribute("data-k")]));
   renderTimeSettings();
-  $("#set-foot").innerHTML = "نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
+  $("#set-foot").innerHTML = "مانع الإعلانات: " + (adblockSeenAt && Date.now() - adblockSeenAt < 6e5 ? '<span style="color:var(--green)">شغّال</span>' : window.FARJA_NATIVE ? '<span style="color:var(--orange)">مركّب، لسا ما اشتغل مع فيديو</span>' : '<span style="color:var(--coral)">مش مركّب (ركّب تطبيق التلفزيون الجديد)</span>') + " · نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
 }
 function renderTimeSettings() {
   const u = getUsage();
