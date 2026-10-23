@@ -8,40 +8,34 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3.0.2">
+<link rel="stylesheet" href="style.css?v=2.5.0">
 </head>
 <body>
 
 <!-- ============ HOME ============ -->
 <section id="home" class="screen">
-  <div class="scroll">
-    <header class="top">
-      <div class="brand">
-        <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
-          <rect x="4" y="10" width="56" height="46" rx="14" fill="var(--accent)"/>
-          <path d="M4 24 Q18 22 22 10 L4 10Z" fill="var(--coral)"/>
-          <path d="M60 24 Q46 22 42 10 L60 10Z" fill="var(--coral)"/>
-          <path d="M27 26 L42 35 L27 44Z" fill="var(--bg)"/>
-        </svg>
-        <span class="brand-name">صندوق <b>الفرجة</b></span>
-      </div>
-      <div class="top-btns">
-      <button class="f kid-btn hidden" id="kid-btn"></button>
-      <button class="f search-btn" id="search-btn">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.8"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-        <span>ابحث</span>
-      </button>
-      <button class="f parent-btn" id="parent-btn">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="11" rx="3" fill="currentColor"/></svg>
-        <span>الأهل</span>
-      </button>
-      </div>
-    </header>
-    <div class="hello">
-      <p id="greet" class="greet"></p>
-      <h1>شو بدكم تشوفوا اليوم؟</h1>
-      <p id="time-chip" class="time-chip hidden"></p>
+  <div id="stage" class="stage"><div class="st-img" id="st-a"></div><div class="st-img" id="st-b"></div><div class="st-shade"></div></div>
+  <nav id="rail" class="rail">
+    <button class="f rail-me" id="kid-btn"></button>
+    <div class="rail-items" id="rail-items"></div>
+  </nav>
+  <div class="clock" id="clock" dir="ltr"></div>
+  <p id="time-chip" class="time-chip hidden"></p>
+  <div class="brand-corner">
+    <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="10" width="56" height="46" rx="14" fill="var(--yellow)"/><path d="M4 24 Q18 22 22 10 L4 10Z" fill="var(--coral)"/><path d="M60 24 Q46 22 42 10 L60 10Z" fill="var(--coral)"/><path d="M27 26 L42 35 L27 44Z" fill="var(--navy)"/></svg>
+    <span>صندوق <b>الفرجة</b></span>
+  </div>
+  <div id="hero" class="hero">
+    <p class="hi-chip"><span id="hi-chip"></span></p>
+    <h1 class="hi-title" id="hi-title"></h1>
+    <p class="hi-meta" id="hi-meta"><span id="greet" class="greet"></span></p>
+    <div class="hi-acts">
+      <button class="f hbtn primary" id="hi-play"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg><span>شغّل</span></button>
+      <button class="f hbtn" id="hi-ch"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M8 3l4 3 4-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>القناة</span></button>
+      <button class="f hbtn" id="hi-fav"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="currentColor"/></svg><span>مفضلتي</span></button>
     </div>
+  </div>
+  <div class="scroll home-scroll" id="home-scroll">
     <div id="notice" class="notice hidden"></div>
     <div id="home-rows"></div>
   </div>
@@ -143,6 +137,16 @@
       <p class="next-hint"><kbd>OK</kbd> شغّل &nbsp;·&nbsp; <kbd dir="ltr">◀ ▲ ▼ ▶</kbd> اختار &nbsp;·&nbsp; <kbd>رجوع</kbd> للقائمة</p>
     </div>
   </div>
+  <div id="p-break" class="p-break hidden">
+    <div class="br-box">
+      <svg class="br-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" class="br-bg"/><circle id="br-ring" cx="50" cy="50" r="45" class="br-fg"/></svg>
+      <div class="br-eyes"><i></i><i></i></div>
+      <h2>وقت نريّح عيوننا!</h2>
+      <p id="br-tip" class="br-tip"></p>
+      <p class="br-count"><b id="br-count">60</b> ثانية ومنكمّل</p>
+    </div>
+  </div>
+  <div id="p-count" class="p-count"></div>
   <div id="p-err" class="p-err hidden"><div class="p-err-box"><p id="p-err-msg"></p><p class="next-hint"><kbd>رجوع</kbd> للقائمة</p></div></div>
 </section>
 
@@ -172,15 +176,17 @@
   </div>
 </section>
 
-<!-- ============ OPENING YOUTUBE PLAYER ============ -->
-<section id="tvlaunch" class="screen">
+<!-- ============ BEDTIME (allowed hours) ============ -->
+<section id="bedtime" class="screen">
   <div class="tu-wrap">
-    <div class="ad-wait">
-      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="10" width="56" height="46" rx="14" fill="var(--yellow)"/><path d="M4 24 Q18 22 22 10 L4 10Z" fill="var(--coral)"/><path d="M60 24 Q46 22 42 10 L60 10Z" fill="var(--coral)"/><path d="M27 26 L42 35 L27 44Z" fill="var(--navy)"/></svg>
-      <h2>يلا نتفرج!</h2>
-      <p id="tv-launch-title" class="muted" style="font-size:3rem"></p>
-      <span class="dots"><i></i><i></i><i></i></span>
-    </div>
+    <svg class="tu-moon bt-moon" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M40 8a24 24 0 1 0 16 40A20 20 0 0 1 40 8z" fill="var(--accent)"/>
+      <circle cx="14" cy="14" r="2.4" fill="var(--ink)"/><circle cx="52" cy="22" r="1.8" fill="var(--ink)"/><circle cx="26" cy="6" r="1.4" fill="var(--ink)"/>
+    </svg>
+    <svg class="tu-moon bt-sun" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="13" fill="var(--yellow)"/><g stroke="var(--yellow)" stroke-width="4" stroke-linecap="round"><path d="M32 6v7M32 51v7M6 32h7M51 32h7M13 13l5 5M46 46l5 5M13 51l5-5M46 18l5-5"/></g></svg>
+    <h1 id="bt-title"></h1>
+    <p id="bt-msg" class="muted"></p>
+    <div class="tu-btns"><button class="f btn" data-act="bt-parent">فتح ساعة (للأهل)</button></div>
   </div>
 </section>
 
@@ -241,15 +247,15 @@
 
       <div class="card">
         <h2>خيارات</h2>
-        <button class="f tog val hidden" id="pm-btn"><span>طريقة التشغيل</span><b id="pm-val"></b></button>
         <button class="f tog" data-k="autoNext"><span>تشغيل الفيديو الجاي تلقائياً</span><i class="sw"></i></button>
         <button class="f tog" data-k="hideShorts"><span>إخفاء الفيديوهات القصيرة (دقيقة أو أقل)</span><i class="sw"></i></button>
       </div>
 
       <div class="card">
         <h2>الأولاد <span id="kid-count" class="count"></span></h2>
-        <p class="muted">كل ولد إله مفضلته ووقته وكمّل المشاهدة تبعه. القنوات مشتركة للكل.</p>
+        <p class="muted">كل ولد إله مفضلته ووقته وكمّل المشاهدة تبعه. القنوات مشتركة للكل، وبتقدر تخفي قنوات عن ولد معيّن من زر «قنواته».</p>
         <div id="kid-list" class="ch-list"></div>
+        <div id="kid-chans" class="kid-chans hidden"></div>
         <div class="add-row" style="margin-top:2rem">
           <input id="kid-in" class="f inp" type="text" dir="auto" maxlength="20" autocomplete="off" placeholder="اسم الولد">
           <button id="kid-add" class="f btn primary">أضف</button>
@@ -267,6 +273,36 @@
       </div>
 
       <div class="card">
+        <h2>مواعيد الفرجة</h2>
+        <p class="muted">برّا هالأوقات التلفزيون بيعرض «وقت النوم». قبل ما يخلص الوقت بـ5 دقايق وبدقيقة بيطلع تنبيه لطيف.</p>
+        <button class="f tog" id="sched-tog"><span>تشغيل المواعيد</span><i class="sw"></i></button>
+        <div id="sched-rows" class="sched-rows">
+          <div class="sch-row"><b>الأحد للخميس</b>
+            <span class="sch-lbl">من</span><button class="f btn sm" data-sch="wd.0|-30">−</button><span class="sch-v" data-schv="wd.0"></span><button class="f btn sm" data-sch="wd.0|30">+</button>
+            <span class="sch-lbl">لـ</span><button class="f btn sm" data-sch="wd.1|-30">−</button><span class="sch-v" data-schv="wd.1"></span><button class="f btn sm" data-sch="wd.1|30">+</button>
+          </div>
+          <div class="sch-row"><b>الجمعة والسبت</b>
+            <span class="sch-lbl">من</span><button class="f btn sm" data-sch="we.0|-30">−</button><span class="sch-v" data-schv="we.0"></span><button class="f btn sm" data-sch="we.0|30">+</button>
+            <span class="sch-lbl">لـ</span><button class="f btn sm" data-sch="we.1|-30">−</button><span class="sch-v" data-schv="we.1"></span><button class="f btn sm" data-sch="we.1|30">+</button>
+          </div>
+          <p class="muted"><span id="sched-ov"></span></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>الأقسام المفتوحة</h2>
+        <p class="muted">سكّر قسم كامل بكبسة (مثلاً أيام المدرسة خلّي بس القرآن والتعليمي). التصنيف بينعمل تلقائياً من بيانات يوتيوب لما تضيف قناة، وبتقدر تغيّره.</p>
+        <div id="cat-togs"></div>
+      </div>
+
+      <div class="card">
+        <h2>صحة وعادات</h2>
+        <button class="f tog val" id="eb-btn"><span>استراحة للعيون (دقيقة)</span><b id="eb-val"></b></button>
+        <button class="f tog" data-k="reward"><span>مكافأة: كل 10 دقايق قرآن أو تعليمي = 5 دقايق زيادة (لحد 30 دقيقة باليوم)</span><i class="sw"></i></button>
+        <p class="muted" style="margin-top:1.4rem">التصنيف (قرآن، تعليمي…) بتختاره لكل قناة من قائمة القنوات فوق أو من الموبايل.</p>
+      </div>
+
+      <div class="card">
         <h2>الأمان</h2>
         <button id="chg-pin" class="f btn">تغيير الرقم السري</button>
       </div>
@@ -277,9 +313,10 @@
 </section>
 
 <div id="toast" class="toast"></div>
+<div id="warn" class="warn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="var(--yellow)"/><path d="M12 9v4l3 2" stroke="var(--navy)" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M5 4l3 2M19 4l-3 2" stroke="var(--yellow)" stroke-width="2.4" stroke-linecap="round"/></svg><p id="warn-text"></p></div>
 <div id="remote-msg" class="remote-msg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="var(--yellow)"/></svg><p id="remote-msg-text"></p></div>
 
-<script src="config.js?v=3.0.2"></script>
-<script src="app.js?v=3.0.2"></script>
+<script src="config.js?v=2.5.0"></script>
+<script src="app.js?v=2.5.0"></script>
 </body>
 </html>

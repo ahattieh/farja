@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.0.2";
+var VERSION = "2.5.0";
 const store = {
   get(k, d) {
     try {
@@ -45,7 +45,7 @@ const store = {
     }
   }
 };
-const settings = Object.assign({ hideShorts: false, autoNext: true, dailyLimit: 0 }, store.get("settings", {}));
+const settings = Object.assign({ hideShorts: false, autoNext: true, dailyLimit: 0, eyeBreak: 20, reward: true }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 const KID_COLORS = ["#ff5d73", "#ffd23f", "#2ec98b", "#9b5de5", "#ff9f1c", "#19c3c3"];
 let kids = store.get("kids", []);
@@ -368,6 +368,7 @@ function ghRepo() {
   return m && repo ? m[1] + "/" + repo : null;
 }
 function parseRemote(j) {
+  takeRemoteExtra(j);
   const list = [];
   (Array.isArray(j) ? j : j && j.channels || []).forEach((x) => {
     if (x && typeof x === "object") {
@@ -383,7 +384,10 @@ function parseRemote(j) {
 }
 function fetchRemoteList() {
   return __async(this, null, function* () {
-    if (DEMO) return DEMO_CH.map((c) => c[0]);
+    if (DEMO) {
+      takeRemoteExtra({ channels: DEMO_CH.map((c, i) => ({ id: "UCdemo" + i, cat: ["quran", "learn", "stories", "songs", "fun"][i % 5] })), picks: [{ id: "UCdemo2-v4", title: "اختيار بابا: قصة قبل النوم", ch: "UCdemo2", chTitle: DEMO_CH[2][0], thumb: demoThumb(140, 4), dur: 320 }, { id: "PICKext1", title: "فيديو من برّا القنوات بعته بابا", ch: "UCother", chTitle: "قناة ثانية", thumb: demoThumb(20, 9), dur: 200 }], blocked: [] });
+      return DEMO_CH.map((c) => c[0]);
+    }
     const repo = ghRepo();
     if (repo) {
       try {
@@ -442,7 +446,8 @@ function loadChannels() {
       seen[ch.id] = 1;
       out.push(Object.assign({}, ch, { source: "tv" }));
     });
-    channels = out;
+    allChannels = out;
+    applyKidFilter();
     channelsLoading = false;
   });
 }
@@ -461,7 +466,8 @@ function rebuildChannelsLocal() {
     seen[c.id] = 1;
     out.push(Object.assign({}, c, { source: "tv" }));
   });
-  channels = out;
+  allChannels = out;
+  applyKidFilter();
 }
 const VIDEO_TTL = 30 * 60 * 1e3;
 const vMem = {};
@@ -473,7 +479,7 @@ function putCached(chId, data) {
   vMem[chId] = data;
   store.set("vc2." + chId, { at: data.at, videos: data.videos.slice(0, 50), next: data.videos.length > 50 ? null : data.next });
 }
-const visible = (list) => list.filter((v) => !(settings.hideShorts && v.dur > 0 && v.dur <= 60));
+const visible = (list) => list.filter((v) => !(settings.hideShorts && v.dur > 0 && v.dur <= 60) && !isBlocked(v.id));
 const LIMITS = [0, 15, 30, 45, 60, 90, 120, 180];
 function todayStr() {
   const d = /* @__PURE__ */ new Date();
@@ -501,13 +507,13 @@ function remainingSec() {
 const fmtMin = (s) => Math.ceil(s / 60) + " دقيقة";
 let usageSaveAt = 0;
 function addWatch(sec) {
-  if (!limitOn()) return;
   const u = getUsage();
   u.sec += sec;
   if (Date.now() - usageSaveAt > 5e3) {
     usageSaveAt = Date.now();
     saveUsage();
   }
+  if (!limitOn()) return;
   const left = remainingSec();
   if (left <= 0) {
     saveUsage();
@@ -517,11 +523,11 @@ function addWatch(sec) {
   if (left <= 60 && u.warned < 2) {
     u.warned = 2;
     saveUsage();
-    toast("باقي دقيقة وحدة!");
+    showWarn("باقي دقيقة وحدة! خلّصوا الفيديو على مهل", "soft");
   } else if (left <= 300 && u.warned < 1) {
     u.warned = 1;
     saveUsage();
-    toast("باقي 5 دقايق على وقت الفرجة");
+    showWarn("باقي 5 دقايق على وقت الفرجة", "soft");
   }
 }
 function timeUp() {
@@ -557,6 +563,10 @@ let current = null;
 const lastFocus = {};
 function show(name) {
   if (locked && name !== "locked" && name !== "pin") name = "locked";
+  else if (!locked && name !== "bedtime" && name !== "pin" && name !== "settings" && name !== "locked" && !schedAllowed()) {
+    name = "bedtime";
+    renderBedtime();
+  }
   $$(".screen").forEach((s) => s.classList.toggle("active", s.id === name));
   current = name;
   remoteNotify();
@@ -595,6 +605,10 @@ function slideRow(el) {
 }
 function ensureVisible(el) {
   slideRow(el);
+  if (el.closest && el.closest("#home-rows")) {
+    homeScrollTo(el);
+    return;
+  }
   const sc = el.closest(".scroll");
   if (!sc) return;
   const firstRow = sc.querySelector(".hrow");
@@ -701,8 +715,8 @@ function loadFeed() {
     feedLoading = false;
   });
 }
-function buildFeed(max) {
-  const lists = channels.map((c) => visible(feedData[c.id] || []).slice().sort((x, y) => (y.at || 0) - (x.at || 0)).map((v) => Object.assign({}, v, { ch: c })));
+function buildFeed(max, only) {
+  const lists = (only || channels).map((c) => visible(feedData[c.id] || []).slice().sort((x, y) => (y.at || 0) - (x.at || 0)).map((v) => Object.assign({}, v, { ch: c })));
   lists.sort((x, y) => (y[0] && y[0].at || 0) - (x[0] && x[0].at || 0));
   const out = [];
   for (let round = 0; out.length < max; round++) {
@@ -718,7 +732,7 @@ function buildFeed(max) {
   return out;
 }
 function videoCard(v, row, i, big) {
-  const meta = [(row === "feed" || row === "search" || row === "cont" || row === "favs") && v.ch ? esc(v.ch.title) : "", row === "cont" ? "باقي " + fmtTime(Math.max(0, v.dur - v.pos)) : ageText(v.at)].filter(Boolean).join(" · ");
+  const meta = [(row === "feed" || row === "search" || row === "cont" || row === "favs" || row === "picks" || /^cat:/.test(row)) && v.ch ? esc(v.ch.title) : "", row === "cont" ? "باقي " + fmtTime(Math.max(0, v.dur - v.pos)) : ageText(v.at)].filter(Boolean).join(" · ");
   return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(row !== "cont" && v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "").concat(row === "cont" && v.dur ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(v.pos / v.dur * 100)) + '%"></i></span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
 }
 function skelCards(n, big) {
@@ -733,7 +747,8 @@ function renderHome() {
   const hr = (/* @__PURE__ */ new Date()).getHours();
   renderTimeChip();
   const kn = curKid() && kids.length ? " يا " + curKid().name : "";
-  $("#greet").textContent = (hr < 12 ? "صباح الخير" : hr < 17 ? "نهارك سعيد" : "مساء الخير") + kn + "!";
+  if (!heroEl || !document.body.contains(heroEl)) heroDefault();
+  renderRail();
   const notice = $("#notice");
   if (!DEMO && !CFG.apiKey) {
     notice.innerHTML = 'التطبيق محتاج مفتاح <b dir="ltr">YouTube Data API</b> حتى يجيب الفيديوهات. ضيفه بملف <b dir="ltr">config.js</b> (الخطوات بملف README).';
@@ -756,10 +771,19 @@ function renderHome() {
   }
   const haveAny = channels.some((c) => feedData[c.id]);
   let html = "";
+  if (homeView !== "all") {
+    box.innerHTML = renderHomeView();
+    return;
+  }
   const cont = continueList();
   if (cont.length) {
     rowLists.cont = cont.map((h) => Object.assign({}, h, { ch: channels.find((c) => h.ch && c.id === h.ch.id) || h.ch }));
     html += rowHTML("كمّل المشاهدة", rowLists.cont.map((v, i) => videoCard(v, "cont", i, false)).join(""));
+  }
+  const picks = picksList();
+  if (picks.length) {
+    rowLists.picks = picks;
+    html += rowHTML(catTitle("picks", "اختيار بابا وماما"), picks.map((v, i) => videoCard(v, "picks", i, true)).join(""), "picks-row");
   }
   if (haveAny) {
     const feed = buildFeed(30);
@@ -776,6 +800,15 @@ function renderHome() {
   const chBubble = (c, row) => '<button class="f ch" data-id="'.concat(esc(c.id), '" data-key="').concat(row, ":").concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt="">').concat(isFavCh(c.id) ? '<i class="ch-heart">❤</i>' : "", '</span><span class="nm">').concat(esc(c.title), "</span></button>");
   const favChs = channels.filter((c) => isFavCh(c.id));
   if (favChs.length) html = html.replace(/(<section class="hrow[^"]*"><h2>الجديد من قنواتكم)/, rowHTML("قنواتي المفضلة ❤", favChs.map((c) => chBubble(c, "fch")).join(""), "chans") + "$1");
+  if (haveAny) CATS.forEach((cat) => {
+    const inCat = channels.filter((c) => catOf(c.id) === cat.k);
+    if (!inCat.length) return;
+    const list = buildFeed(24, inCat);
+    if (!list.length) return;
+    const key = "cat:" + cat.k;
+    rowLists[key] = list;
+    html += rowHTML(catTitle(cat.k, cat.n), list.map((v, i) => videoCard(v, key, i, false)).join(""), "cat-row");
+  });
   html += rowHTML("كل القنوات", channels.map((c) => chBubble(c, "ch")).join(""), "chans");
   favChs.concat(channels.filter((c) => !isFavCh(c.id))).forEach((c) => {
     const list = visible(feedData[c.id] || []).slice(0, 12).map((v) => Object.assign({}, v, { ch: c }));
@@ -1422,10 +1455,6 @@ class FakePlayer {
   loadVideoById(arg) {
     const id = typeof arg === "object" ? arg.videoId : arg;
     const v = playList.find((x) => x.id === id) || { title: "", dur: 60 };
-    if (QS.has("demoad2")) {
-      this.ad2Start = Date.now();
-      this.ad2Until = Date.now() + 6e3;
-    }
     this.vid = id;
     this.t = typeof arg === "object" && arg.startSeconds || 0;
     this.d = v.dur;
@@ -1486,13 +1515,6 @@ class FakePlayer {
     this.t = clamp(s, 0, this.d);
   }
   getCurrentTime() {
-    if (QS.has("demoad2") && this.ad2Until && Date.now() < this.ad2Until) {
-      handleYtInfo({ progressState: { allowSeeking: false } });
-      return (Date.now() - this.ad2Start) / 1e3;
-    }
-    if (QS.has("demoad2") && this.ad2Until) {
-      handleYtInfo({ progressState: { allowSeeking: true } });
-    }
     return this.t;
   }
   getDuration() {
@@ -1521,13 +1543,17 @@ function playAt(idx) {
     show("locked");
     return;
   }
+  if (!schedAllowed()) {
+    goBedtime();
+    return;
+  }
+  if (isBlocked(v.id)) {
+    toast("هالفيديو مش مسموح");
+    return;
+  }
   if (!v.parentOk && !channelAllowed(videoChannelId(v))) {
     toast("هالقناة مش بالقنوات المسموحة");
     if (current === "player") closePlayer();
-    return;
-  }
-  if (useTvMode()) {
-    launchTv(v, idx);
     return;
   }
   playIdx = idx;
@@ -1542,7 +1568,6 @@ function playAt(idx) {
   updateFavBadge();
   updateOSD(0, v.dur);
   spinner(true);
-  $("#yt-wrap").classList.remove("hidden");
   if (current !== "player") show("player");
   $("#shield").focus();
   showOSD(4e3);
@@ -1551,8 +1576,6 @@ function playAt(idx) {
     const h = histGet(v.id);
     const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
     if (resume) {
-      contentT = resume;
-      lastSeekAt = Date.now();
       p.loadVideoById({ videoId: v.id, startSeconds: resume });
       toast("كمّلنا من " + fmtTime(resume));
     } else p.loadVideoById(v.id);
@@ -1568,6 +1591,12 @@ function startTimers() {
     } catch (e) {
     }
     if (pState === 1 || pState === 3) addWatch(0.5);
+    if (pState === 1 && !adMode) {
+      const pv = playList[playIdx];
+      logTick(0.5, pv);
+      breakTick(0.5);
+      rewardTick(0.5, videoChannelId(pv));
+    }
     if (pState === 1 && ++histTick % 20 === 0) histSave();
     watchForAd();
   }, 500);
@@ -1621,21 +1650,16 @@ function hideErr() {
   clearTimeout(errT);
   $("#p-err").classList.add("hidden");
 }
+// End screen: suggestions like YouTube's, only from the approved channels.
+// The first tile is the next video in the list (auto-plays after a countdown).
 let endSugs = [], endSel = 0, endNextIdx = -1;
 function buildSuggestions(cur) {
   const seen = {};
   seen[cur.id] = 1;
   const watched = {};
-  hist.forEach((h) => {
-    if (h.dur && h.pos >= h.dur - 20) watched[h.id] = 1;
-  });
+  hist.forEach((h) => { if (h.dur && h.pos >= h.dur - 20) watched[h.id] = 1; });
   const out = [];
-  const add = (v) => {
-    if (v && !seen[v.id] && out.length < 8) {
-      seen[v.id] = 1;
-      out.push(v);
-    }
-  };
+  const add = (v) => { if (v && !seen[v.id] && out.length < 8) { seen[v.id] = 1; out.push(v); } };
   const next = playList[playIdx + 1];
   if (next) add(next);
   const chId = videoChannelId(cur);
@@ -1644,10 +1668,7 @@ function buildSuggestions(cur) {
   if (ch) fresh(visible(feedData[ch.id] || [])).slice(0, 3).forEach((v) => add(Object.assign({}, v, { ch })));
   const others = channels.filter((c) => c.id !== chId).sort((x, y) => (isFavCh(y.id) ? 1 : 0) - (isFavCh(x.id) ? 1 : 0));
   for (let round = 0; out.length < 8 && round < 4; round++) {
-    others.forEach((c) => {
-      const v = fresh(visible(feedData[c.id] || []))[round];
-      if (v) add(Object.assign({}, v, { ch: c }));
-    });
+    others.forEach((c) => { const v = fresh(visible(feedData[c.id] || []))[round]; if (v) add(Object.assign({}, v, { ch: c })); });
   }
   if (ch) visible(feedData[ch.id] || []).forEach((v) => add(Object.assign({}, v, { ch })));
   return out;
@@ -1657,20 +1678,16 @@ function onEnded() {
   const cur = playList[playIdx] || {};
   endSugs = buildSuggestions(cur);
   endNextIdx = playList[playIdx + 1] && endSugs[0] && endSugs[0].id === playList[playIdx + 1].id ? 0 : -1;
-  if (!endSugs.length) {
-    closePlayer();
-    return;
-  }
-  $("#end-grid").innerHTML = endSugs.map(
-    (v, i) => '<button class="es" data-es="'.concat(i, '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(i === endNextIdx ? '<span class="es-next">التالي</span>' : "", '</span><span class="tt">').concat(esc(v.title), '</span><span class="meta">').concat(esc(v.ch && v.ch.title || ""), "</span></button>")
+  if (!endSugs.length) { closePlayer(); return; }
+  $("#end-grid").innerHTML = endSugs.map((v, i) =>
+    '<button class="es" data-es="' + i + '"><span class="th"><img src="' + esc(v.thumb) + '" alt="">' + (v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "") + (i === endNextIdx ? '<span class="es-next">التالي</span>' : "") + '</span><span class="tt">' + esc(v.title) + '</span><span class="meta">' + esc(v.ch && v.ch.title || "") + "</span></button>"
   ).join("");
   endSel = 0;
   endMark();
   hideOSD();
   $("#p-end").classList.remove("hidden");
   clearInterval(endT);
-  endT = setInterval(() => {
-  }, 1e9);
+  endT = setInterval(() => {}, 1e9);
   if (settings.autoNext && endNextIdx === 0) {
     endCount = 8;
     endLabel();
@@ -1680,35 +1697,23 @@ function onEnded() {
       endLabel();
       if (endCount <= 0) endPlay(0);
     }, 1e3);
-  } else {
-    endCount = -1;
-    endLabel();
-  }
-  remoteNotify();
+  } else { endCount = -1; endLabel(); }
+  try { remoteNotify(); } catch (e) {}
 }
 function endLabel() {
   $("#end-lbl").innerHTML = endCount > 0 ? "الفيديو التالي بعد <b>" + endCount + "</b>" : "شو بدك تشوف كمان؟";
 }
 function endStopCountdown() {
-  if (endCount > 0) {
-    endCount = -1;
-    clearInterval(endT);
-    endT = setInterval(() => {
-    }, 1e9);
-    endLabel();
-  }
+  if (endCount > 0) { endCount = -1; clearInterval(endT); endT = setInterval(() => {}, 1e9); endLabel(); }
 }
 function endMark() {
-  $$("#end-grid .es").forEach((b, i) => b.classList.toggle("sel", i === endSel));
+  Array.prototype.forEach.call(document.querySelectorAll("#end-grid .es"), (b, i) => b.classList.toggle("sel", i === endSel));
 }
 function endPlay(i) {
   const v = endSugs[i];
   if (!v) return;
   clearEnd();
-  if (i === endNextIdx) {
-    playAt(playIdx + 1);
-    return;
-  }
+  if (i === endNextIdx) { playAt(playIdx + 1); return; }
   const rest = visible(feedData[v.ch.id] || []).filter((x) => x.id !== v.id).map((x) => Object.assign({}, x, { ch: v.ch }));
   playFrom = "c:" + v.ch.id;
   playList = [v].concat(rest);
@@ -1725,18 +1730,23 @@ function endKey(code) {
     endMark();
     return;
   }
-  if (code === 13 || code === 415 || code === 32) {
-    endPlay(endSel);
-    return;
-  }
+  if (code === 13 || code === 415 || code === 32) { endPlay(endSel); return; }
   if (isBack(code)) closePlayer();
 }
+(function () {
+  const g = document.getElementById("end-grid");
+  if (!g) return;
+  g.addEventListener("click", (e) => { const b = e.target.closest(".es"); if (b) endPlay(+b.getAttribute("data-es")); });
+  g.addEventListener("mousemove", (e) => { const b = e.target.closest(".es"); if (b && +b.getAttribute("data-es") !== endSel) { endStopCountdown(); endSel = +b.getAttribute("data-es"); endMark(); } });
+})();
 function clearEnd() {
   clearInterval(endT);
   endT = null;
   $("#p-end").classList.add("hidden");
 }
 function closePlayer() {
+  endBreak(false);
+  saveLog();
   resetAdWatch();
   if (usage) saveUsage();
   histSave(true);
@@ -1754,24 +1764,6 @@ function closePlayer() {
   curVid = null;
   hideOSD();
   spinner(false);
-  if (lastFocus.retFrom && $("#yt-wrap").classList.contains("hidden")) {
-    $("#yt-wrap").classList.remove("hidden");
-    const from = lastFocus.retFrom;
-    lastFocus.retFrom = null;
-    if (from === "channel" && chs) {
-      show("channel");
-      focusFirstVideo();
-      return;
-    }
-    if (from === "search") {
-      openSearch();
-      return;
-    }
-    show("home");
-    renderHome();
-    focusHome(true);
-    return;
-  }
   if (playFrom === "search") {
     show("search");
     focusEl($('#sr-grid .v[data-i="' + playIdx + '"]') || $(".kb-key[data-k]"));
@@ -1829,9 +1821,6 @@ function resetAdWatch() {
   oddSince = 0;
   adForced = false;
   wePaused = false;
-  contentT = 0;
-  ytSeekable = null;
-  lastSeekAt = Date.now();
   setAd(false);
 }
 function adSignals() {
@@ -1845,7 +1834,6 @@ function adSignals() {
   return { t, d, exp, durMismatch: !!(exp && d > 1 && Math.abs(d - exp) > 3) };
 }
 let unstartedAt = 0;
-let contentT = 0, lastSeekAt = 0;
 let wePaused = false, oddSince = 0, adForced = false, adForcedAt = 0;
 function forceAd() {
   adForced = true;
@@ -1876,11 +1864,6 @@ function watchForAd() {
   oddSince = odd ? oddSince || Date.now() : 0;
   const limit = ps === 3 ? 3500 : ps === 2 ? 1500 : 1200;
   let isAd = oddSince && Date.now() - oddSince > limit || g.durMismatch;
-  if (ytSeekable === false && Date.now() - ytSeekableAt < 5e3 && (ps === 1 || ps === 3 || ps === -1)) isAd = true;
-  const sinceSeek = Date.now() - lastSeekAt;
-  if (contentT > 20 && sinceSeek > 2500 && g.t < contentT - 8) isAd = true;
-  if (!isAd && ps === 1 && !adMode) contentT = Math.max(contentT, g.t);
-  if (!isAd && ps === 1 && adMode && Math.abs(g.t - contentT) < 8) contentT = g.t;
   if (adForced) {
     const moving = ps === 1 && !adFrozenAt && Date.now() - adForcedAt > 3e3;
     if (moving) adForced = false;
@@ -1901,33 +1884,8 @@ function toggleDebug() {
   if (dbgOn) renderDebug(adSignals());
 }
 const ytInfo = {}, ytKeysSeen = {};
-let ytSeekable = null, ytSeekableAt = 0;
-function handleYtInfo(info) {
-  let ps = info.progressState;
-  if (typeof ps === "string") {
-    try {
-      ps = JSON.parse(ps);
-    } catch (e) {
-      ps = null;
-    }
-  }
-  if (ps && typeof ps === "object" && "allowSeeking" in ps) {
-    ytSeekable = !!ps.allowSeeking;
-    ytSeekableAt = Date.now();
-  }
-}
 let tline = [];
-let adblockSeenAt = 0, adblockRemoved = 0;
 window.addEventListener("message", (ev) => {
-  try {
-    const m = typeof ev.data === "string" && ev.data.indexOf('"farja"') > 0 ? JSON.parse(ev.data) : null;
-    if (m && m.farja === "adblock") {
-      adblockSeenAt = Date.now();
-      adblockRemoved = m.removed || 0;
-      return;
-    }
-  } catch (e) {
-  }
   if (!/youtube\.com$/.test(String(ev.origin).replace(/^https?:\/\//, "").replace(/^www\./, "www.").split(":")[0])) return;
   let d = ev.data;
   try {
@@ -1938,7 +1896,6 @@ window.addEventListener("message", (ev) => {
   if (!d || typeof d !== "object") return;
   const info = d.info && typeof d.info === "object" ? d.info : null;
   ytKeysSeen["ev:" + d.event] = (ytKeysSeen["ev:" + d.event] || 0) + 1;
-  if (info) handleYtInfo(info);
   if (info) Object.keys(info).forEach((k) => {
     const v = info[k];
     ytInfo[k] = typeof v === "object" ? JSON.stringify(v).slice(0, 80) : v;
@@ -1973,7 +1930,7 @@ function renderDebug(g, ps) {
   extra = "loaded=" + q("getVideoLoadedFraction") + "  rate=" + q("getPlaybackRate") + "  quality=" + q("getPlaybackQuality") + "  levels=" + q("getAvailableQualityLevels") + "\nurl=" + q("getVideoUrl");
   const skip = { currentTime: 1, currentTimeLastUpdated_: 1, videoBytesLoaded: 1, videoLoadedFraction: 1, mediaReferenceTime: 1, progressState: 1 };
   const infoTxt = Object.keys(ytInfo).filter((k) => !skip[k]).map((k) => k + "=" + String(ytInfo[k]).slice(0, 40)).join("  ");
-  $("#dbg").textContent = "adblock=" + (adblockSeenAt && Date.now() - adblockSeenAt < 8e3 ? "ON removed=" + adblockRemoved : window.FARJA_NATIVE ? "app-only" : "off") + "  v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  id=" + curVid + "/" + vd.video_id + "\ntimeline(t/state, 1s): " + tline.join("  ") + "\n" + extra + "\nyt: " + infoTxt.slice(0, 700) + "\nprogressState=" + String(ytInfo.progressState || "").slice(0, 120) + "\nseekable=" + ytSeekable + "  contentT=" + contentT.toFixed(1);
+  $("#dbg").textContent = "v" + VERSION + "  state=" + pState + "  polled=" + ps + "  wePaused=" + wePaused + "  ad=" + adMode + "\nt=" + g.t.toFixed(2) + "  dur=" + g.d.toFixed(1) + "  expected=" + g.exp + "  id=" + curVid + "/" + vd.video_id + "\ntimeline(t/state, 1s): " + tline.join("  ") + "\n" + extra + "\nyt: " + infoTxt.slice(0, 700) + "\nprogressState=" + String(ytInfo.progressState || "").slice(0, 120);
 }
 let adMuted = false;
 function setAd(on) {
@@ -2003,8 +1960,6 @@ function setAd(on) {
 function seekBy(d) {
   adLastT = -1;
   adFrozenAt = 0;
-  lastSeekAt = Date.now();
-  contentT = 0;
   if (!player) return;
   try {
     const dur = player.getDuration() || 0;
@@ -2105,18 +2060,6 @@ function initPointer() {
     reclaimFocus();
     if (!adMode) showOSD(pState === 1 ? 3500 : 0);
   });
-  $("#end-grid").addEventListener("click", (e) => {
-    const b = e.target.closest(".es");
-    if (b) endPlay(+b.getAttribute("data-es"));
-  });
-  $("#end-grid").addEventListener("mouseover", (e) => {
-    const b = e.target.closest(".es");
-    if (b) {
-      endStopCountdown();
-      endSel = +b.getAttribute("data-es");
-      endMark();
-    }
-  });
   $("#osd-btns").addEventListener("click", (e) => {
     const b = e.target.closest(".pbtn");
     if (b) {
@@ -2136,8 +2079,6 @@ function initPointer() {
     try {
       const d = player.getDuration() || 0;
       if (d) {
-        lastSeekAt = Date.now();
-        contentT = 0;
         player.seekTo(p * d, true);
         updateOSD(p * d, d);
         adLastT = -1;
@@ -2260,6 +2201,10 @@ function playerKey(code) {
       dbgKeys = [];
       toggleDebug();
     }
+    return;
+  }
+  if (inBreak) {
+    if (isBack(code)) closePlayer();
     return;
   }
   if (endT) {
@@ -2438,21 +2383,20 @@ function openSettings() {
 }
 function renderSettings() {
   renderKidsSettings();
-  $("#ch-count").textContent = channels.length;
+  $("#ch-count").textContent = allChannels.length;
   const list = $("#ch-list");
-  if (!channels.length) list.innerHTML = '<p class="none">ما في قنوات لسا.</p>';
-  else list.innerHTML = channels.map(
-    (c) => '<div class="row"><img src="'.concat(esc(c.thumb), '" alt=""><div class="info"><b>').concat(esc(c.title), "</b><span>").concat(c.source === "file" ? "من ملف القنوات" : "انضافت من التلفزيون", '</span></div><button class="f btn danger" data-del="').concat(esc(c.id), '">حذف</button></div>')
+  if (!allChannels.length) list.innerHTML = '<p class="none">ما في قنوات لسا.</p>';
+  else list.innerHTML = allChannels.map(
+    (c) => '<div class="row"><img src="'.concat(esc(c.thumb), '" alt=""><div class="info"><b>').concat(esc(c.title), "</b><span>").concat(c.source === "file" ? "من ملف القنوات" : "انضافت من التلفزيون", '</span></div><button class="f btn cat-btn" data-cat="').concat(esc(c.id), '">').concat(catOf(c.id) ? catTitle(catOf(c.id), catName(catOf(c.id))) : "تصنيف", '</button><button class="f btn danger" data-del="').concat(esc(c.id), '">حذف</button></div>')
   ).join("");
+  renderSchedSettings();
+  renderCatSettings();
+  $("#eb-val").textContent = settings.eyeBreak ? "كل " + settings.eyeBreak + " دقيقة" : "مطفي";
+  renderKidChans();
   $("#restore-btn").classList.toggle("hidden", !removedIds().length);
   $$(".tog[data-k]").forEach((t) => t.classList.toggle("on", !!settings[t.getAttribute("data-k")]));
   renderTimeSettings();
-  const pm = $("#pm-btn");
-  if (pm) {
-    pm.classList.toggle("hidden", !(window.FARJA_NATIVE && window.FARJA_NATIVE.adblock));
-    $("#pm-val").textContent = settings.playerMode === "embed" ? "المشغّل العادي" : "بدون إعلانات";
-  }
-  $("#set-foot").innerHTML = "مانع الإعلانات: " + (adblockSeenAt && Date.now() - adblockSeenAt < 6e5 ? '<span style="color:var(--green)">شغّال</span>' : window.FARJA_NATIVE ? '<span style="color:var(--orange)">مركّب، لسا ما اشتغل مع فيديو</span>' : '<span style="color:var(--coral)">مش مركّب (ركّب تطبيق التلفزيون الجديد)</span>') + " · نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
+  $("#set-foot").innerHTML = "نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
 }
 function renderTimeSettings() {
   const u = getUsage();
@@ -2506,16 +2450,28 @@ function addConfirm(i) {
   store.set("channels", list);
   store.set("removed", removedIds().filter((id) => id !== ch.id));
   rebuildChannelsLocal();
-  if (!channels.some((c) => c.id === ch.id)) channels.push(Object.assign({}, keep, { source: "tv" }));
+  if (!allChannels.some((c) => c.id === ch.id)) {
+    allChannels.push(Object.assign({}, keep, { source: "tv" }));
+    applyKidFilter();
+  }
   addResults = [];
   $("#add-in").value = "";
   $("#add-res").innerHTML = "";
   renderSettings();
   toast("انضافت «" + ch.title + "»");
+  if (!catOf(ch.id)) guessCat(ch).then((k) => {
+    if (!k) return;
+    const l = store.get("catLocal", {});
+    l[ch.id] = k;
+    store.set("catLocal", l);
+    applyKidFilter();
+    if (current === "settings") renderSettings();
+    toast("«" + ch.title + "» انصنّفت: " + catName(k));
+  });
   focusEl($("#add-in"));
 }
 function removeChannel(id) {
-  const ch = channels.find((c) => c.id === id);
+  const ch = allChannels.find((c) => c.id === id);
   if (!ch) return;
   const rows = $$("#ch-list [data-del]");
   const idx = rows.findIndex((b) => b.getAttribute("data-del") === id);
@@ -2563,6 +2519,8 @@ function goBack() {
       break;
     case "pin":
       if (pin.cancel) pin.cancel();
+      break;
+    case "bedtime":
       break;
     case "kids":
       show("home");
@@ -2620,7 +2578,7 @@ function statusObj() {
   } catch (e) {
   }
   const u = getUsage();
-  const state = locked ? "locked" : current === "player" ? adMode ? "ad" : pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
+  const state = locked ? "locked" : current === "bedtime" ? "bedtime" : inBreak ? "break" : current === "player" ? adMode ? "ad" : pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
   return {
     v: 1,
     t: Date.now(),
@@ -2634,7 +2592,9 @@ function statusObj() {
     left: limitOn() ? Math.ceil(remainingSec() / 60) : null,
     limit: settings.dailyLimit || 0,
     hasNext: !!(v && playList[playIdx + 1]),
-    chans: channels.slice(0, 40).map((c) => [c.id, c.title.slice(0, 40), c.uploads]),
+    catOff: settings.catOff || [],
+    cats: CATS.filter((cc) => allChannels.some((x) => catOf(x.id) === cc.k)).map((cc) => cc.k),
+    chans: allChannels.slice(0, 40).map((c) => [c.id, c.title.slice(0, 40), c.uploads]),
     recent: (typeof hist !== "undefined" ? hist : []).slice(0, 8).map((h) => ({ title: h.title, ch: h.ch && h.ch.title, at: h.seen || h.at, thumb: h.thumb }))
   };
 }
@@ -2660,7 +2620,7 @@ function publishStatus(force) {
   lastSent = key;
   lastSentAt = Date.now();
   try {
-    fetch(NTFY + "/" + topic("s"), { method: "POST", body: JSON.stringify(st) }).then((r) => {
+    relayPub("s", st).then((r) => {
       if (r.status === 429) limitedUntil = Date.now() + 30 * 60 * 1e3;
     }).catch(() => {
     });
@@ -2671,7 +2631,14 @@ const seenCmd = {};
 let sseAliveAt = Date.now();
 let cmdSource = null;
 function listenRemote() {
-  if (!REMOTE_ON || !window.EventSource) return;
+  if (!REMOTE_ON) return;
+  if (RELAY) {
+    sseAliveAt = Date.now();
+    pollGen++;
+    pollCmds(pollGen);
+    return;
+  }
+  if (!window.EventSource) return;
   try {
     if (cmdSource) cmdSource.close();
   } catch (e) {
@@ -2692,13 +2659,14 @@ function listenRemote() {
     } catch (e) {
       return;
     }
-    if (!c || !c.cmd || seenCmd[c.id]) return;
-    seenCmd[c.id] = 1;
-    if (c.t && Math.abs(Date.now() - c.t) > 2 * 60 * 1e3) return;
-    onRemote(c);
+    handleCmd(c);
   };
 }
 function onRemote(c) {
+  if (onRemoteExtra(c)) {
+    remoteNotify(true);
+    return;
+  }
   const inPlayer = current === "player" && player;
   switch (c.cmd) {
     case "ping":
@@ -2826,7 +2794,7 @@ function onRemote(c) {
 }
 function publishStatusClosed() {
   try {
-    fetch(NTFY + "/" + topic("s"), { method: "POST", body: JSON.stringify({ v: 1, t: Date.now(), state: "closed" }) }).catch(() => {
+    relayPub("s", { v: 1, t: Date.now(), state: "closed" }).catch(() => {
     });
   } catch (e) {
   }
@@ -2896,6 +2864,7 @@ function renderPairing() {
   });
 }
 function kidAvatar(k, big) {
+  if (k.av && AVATARS[k.av]) return '<span class="kid-av av-animal'.concat(big ? " big" : "", '" style="background:').concat(esc(k.color), '"><svg viewBox="0 0 64 64">').concat(AVATARS[k.av], "</svg></span>");
   const letter = esc((k.name || "?").trim().charAt(0));
   return '<span class="kid-av'.concat(big ? " big" : "", '" style="background:').concat(esc(k.color), '"><b>').concat(letter, '</b><i class="kid-eyes"></i></span>');
 }
@@ -2914,6 +2883,7 @@ function switchKid(id) {
   hist = store.get(pk("hist"), []);
   favs = store.get(pk("favs"), []);
   favCh = store.get(pk("favCh"), []);
+  applyKidFilter();
   lastFocus.homeKey = null;
   homeFocusPending = true;
   renderKidChip();
@@ -2938,7 +2908,7 @@ function renderKidsSettings() {
   else box.innerHTML = kids.map((k) => {
     const u = store.get(k.id === "main" ? "usage" : "kid." + k.id + ".usage", null);
     const mins = u && u.date === todayStr() ? Math.floor(u.sec / 60) : 0;
-    return '<div class="row">'.concat(kidAvatar(k, false), '<div class="info"><b>').concat(esc(k.name), "</b><span>اليوم اتفرج ").concat(mins, ' دقيقة</span></div><button class="f btn" data-kcolor="').concat(esc(k.id), '">لون</button><button class="f btn danger" data-kdel="').concat(esc(k.id), '">حذف</button></div>');
+    return '<div class="row">'.concat(kidAvatar(k, false), '<div class="info"><b>').concat(esc(k.name), "</b><span>اليوم اتفرج ").concat(mins, ' دقيقة</span></div><button class="f btn" data-kav="').concat(esc(k.id), '">شكل</button><button class="f btn" data-kcolor="').concat(esc(k.id), '">لون</button><button class="f btn" data-kch-open="').concat(esc(k.id), '">قنواته</button><button class="f btn danger" data-kdel="').concat(esc(k.id), '">حذف</button></div>');
   }).join("");
   $("#kid-count").textContent = kids.length;
 }
@@ -2978,8 +2948,11 @@ function delKid(id) {
     hist = store.get(pk("hist"), []);
     favs = store.get(pk("favs"), []);
     favCh = store.get(pk("favCh"), []);
+    applyKidFilter();
   }
+  if (kchKid === id) kchKid = null;
   renderKidsSettings();
+  renderKidChans();
   renderKidChip();
   toast("انحذف «" + k.name + "»");
   focusEl($("#kid-list [data-kdel]") || $("#kid-in"));
@@ -3000,149 +2973,841 @@ function cycleKidColor(id) {
   renderKidChip();
   focusEl($('#kid-list [data-kcolor="' + id + '"]'));
 }
-function useTvMode() {
-  if (QS.has("tvmode")) return true;
-  return !!(window.FARJA_NATIVE && window.FARJA_NATIVE.adblock) && settings.playerMode !== "embed" && !DEMO;
+/* =========================================================
+   Farja+ (2.5): parent extras, schedule, health, reports, relay
+   Plain ES2015 (old webOS browsers): no async/await, no ?. / ??
+   ========================================================= */
+
+/* ---------- categories, dad's picks, blocked videos (from channels.json + this TV) ---------- */
+let remoteExtra = store.get("remoteExtra", { cats: {}, picks: [], blocked: [] });
+const CAT_ICONS = {
+  quran: '<svg viewBox="0 0 24 24"><path d="M3 5c3-1 6-1 9 1v14c-3-2-6-2-9-1z" fill="#2ec98b"/><path d="M21 5c-3-1-6-1-9 1v14c3-2 6-2 9-1z" fill="#19a774"/><path d="M12 6v14" stroke="#fff" stroke-width="1.2"/></svg>',
+  learn: '<svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="7" fill="#ffd23f"/><path d="M9 17h6v3H9z" fill="#ff9f1c"/><path d="M10 10l2 2 3-4" stroke="#1f1d5a" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
+  stories: '<svg viewBox="0 0 24 24"><rect x="4" y="3" width="14" height="18" rx="3" fill="#9b5de5"/><rect x="7" y="3" width="2" height="18" fill="#7b3fc4"/><path d="M12 9l1 2 2 .3-1.5 1.4.4 2.1-1.9-1-1.9 1 .4-2.1L9 11.3l2-.3z" fill="#ffd23f"/></svg>',
+  songs: '<svg viewBox="0 0 24 24"><path d="M9 17V5l11-2v12" stroke="#ff5d73" stroke-width="2.4" fill="none"/><circle cx="6.5" cy="17.5" r="3" fill="#ff5d73"/><circle cx="17.5" cy="15.5" r="3" fill="#ff5d73"/></svg>',
+  fun: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="9" rx="6" ry="7" fill="#19c3c3"/><path d="M12 16l-1 2h2z" fill="#19c3c3"/><path d="M12 18c0 2-2 2-2 4" stroke="#19c3c3" stroke-width="1.4" fill="none"/><ellipse cx="10" cy="7" rx="1.5" ry="2.4" fill="#fff" opacity=".5"/></svg>',
+  picks: '<svg viewBox="0 0 24 24"><path d="M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 6-8 11-8 11z" fill="#ff5d73"/></svg>',
+};
+const CATS = [
+  { k: "quran", n: "قرآن" },
+  { k: "learn", n: "تعليمي" },
+  { k: "stories", n: "قصص" },
+  { k: "songs", n: "أناشيد" },
+  { k: "fun", n: "ترفيه" },
+];
+const EDU_CATS = ["quran", "learn"];
+function catName(k) {
+  const c = CATS.find((x) => x.k === k);
+  return c ? c.n : "بدون تصنيف";
 }
-const slimV = (v) => ({ id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, parentOk: v.parentOk || void 0, ch: v.ch ? { id: v.ch.id, title: v.ch.title } : null });
-let rlogN = 0;
-function rlog(msg) {
-  if (!REMOTE_ON || rlogN++ > 15) return;
-  try {
-    fetch(NTFY + "/" + topic("log"), { method: "POST", body: "[app] " + msg }).catch(() => {
-    });
-  } catch (e) {
-  }
+function catTitle(k, n) {
+  return '<i class="cat-ic">' + (CAT_ICONS[k] || "") + "</i>" + esc(n);
 }
-function launchTv(v, idx) {
-  rlog("launchTv " + v.id + " native=" + JSON.stringify(window.FARJA_NATIVE || null) + " mode=" + settings.playerMode + " ua=" + navigator.userAgent.slice(0, 120));
-  const h = histGet(v.id);
-  const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
-  const state = {
-    at: Date.now(),
-    kid: kidId,
-    playFrom,
-    playIdx: idx,
-    from: current === "player" ? lastFocus.retFrom || "home" : current,
-    chId: chs && chs.ch && chs.ch.id,
-    chTab: chs && chs.tab,
-    plMeta: chs && chs.tab === "pl" ? chs.pl.meta : null,
-    homeKey: lastFocus.homeKey,
-    list: playList.slice(Math.max(0, idx - 5), idx + 30).map(slimV),
-    offset: Math.max(0, idx - 5)
-  };
-  lastFocus.retFrom = state.from;
-  try {
-    sessionStorage.setItem("farja.tv", JSON.stringify(state));
-  } catch (e) {
-  }
-  const st = statusObj();
-  delete st.recent;
-  const ctx = {
-    farja: 1,
-    id: v.id,
-    title: v.title,
-    chTitle: v.ch && v.ch.title || "",
-    thumb: v.thumb,
-    dur: v.dur || 0,
-    resume,
-    left: limitOn() ? Math.max(0, Math.floor(remainingSec())) : null,
-    ret: location.href.split("#")[0],
-    room: REMOTE_ON ? room : "",
-    ntfy: NTFY,
-    status: st
-  };
-  try {
-    window.name = JSON.stringify(ctx);
-  } catch (e) {
-  }
-  histSaveTv(v, resume, v.dur || 0);
-  $("#tv-launch-title").textContent = v.title;
-  show("tvlaunch");
-  setTimeout(() => {
-    location.href = "https://www.youtube.com/tv?env_forceFullAnimation=1&env_enableWebSpeech=1&env_enableVoice=1&v=" + encodeURIComponent(v.id) + (resume ? "&t=" + resume : "") + "#/";
-  }, 350);
+function catOf(chId) {
+  const l = store.get("catLocal", {});
+  return l[chId] != null ? l[chId] : remoteExtra.cats && remoteExtra.cats[chId] || "";
 }
-function histSaveTv(v, pos, dur) {
-  const e = Object.assign(slimVideo(v), { pos: Math.floor(pos), dur: Math.floor(dur), seen: Date.now() });
-  hist = [e].concat(hist.filter((x) => x.id !== v.id)).slice(0, 40);
+function cycleCat(chId) {
+  const l = store.get("catLocal", {});
+  const keys = [""].concat(CATS.map((c) => c.k));
+  l[chId] = keys[(keys.indexOf(catOf(chId)) + 1) % keys.length];
+  store.set("catLocal", l);
+}
+let blockedCache = null;
+function blockedMap() {
+  if (blockedCache) return blockedCache;
+  blockedCache = {};
+  (remoteExtra.blocked || []).concat(store.get("blockedLocal", [])).forEach((b) => {
+    const id = b && typeof b === "object" ? b.id : b;
+    if (id) blockedCache[id] = 1;
+  });
+  return blockedCache;
+}
+function isBlocked(id) {
+  return !!blockedMap()[id];
+}
+function blockLocal(id, title) {
+  if (!id || isBlocked(id)) return;
+  const l = store.get("blockedLocal", []);
+  l.push({ id, title: String(title || "").slice(0, 80) });
+  store.set("blockedLocal", l.slice(-300));
+  blockedCache = null;
+  favs = favs.filter((f) => f.id !== id);
+  store.set(pk("favs"), favs);
+  hist = hist.filter((h) => h.id !== id);
   store.set(pk("hist"), hist);
+  if (current === "player" && curVid === id) {
+    closePlayer();
+    showRemoteMsg("هالفيديو انحظر بطلب من الأهل");
+  } else if (current === "home") rerenderHomeKeepFocus();
 }
-function handleTvReturn() {
-  const m = /#ret=([^&]+)/.exec(location.hash);
-  if (m) rlog("returned " + decodeURIComponent(m[1]).slice(0, 200));
-  if (!m) return false;
-  let r = null, st = null;
+function takeRemoteExtra(j) {
+  if (!j || Array.isArray(j)) return;
+  const cats = {};
+  (j.channels || []).forEach((x) => {
+    if (x && typeof x === "object" && x.id && x.cat) cats[x.id] = String(x.cat);
+  });
+  remoteExtra = {
+    cats,
+    picks: Array.isArray(j.picks) ? j.picks.slice(0, 40) : [],
+    blocked: Array.isArray(j.blocked) ? j.blocked.slice(0, 500) : [],
+  };
+  blockedCache = null;
+  store.set("remoteExtra", remoteExtra);
+}
+function picksList() {
+  return (remoteExtra.picks || []).filter((p) => p && p.id && !isBlocked(p.id)).map((p) => {
+    const ch = allChannels.find((c) => c.id === p.ch) || { id: p.ch || "", title: p.chTitle || "" };
+    return { id: p.id, title: p.title || "", thumb: p.thumb || "https://i.ytimg.com/vi/" + p.id + "/hqdefault.jpg", dur: +p.dur || 0, at: +p.at || 0, ch, parentOk: true };
+  });
+}
+
+/* ---------- per-kid channels ---------- */
+let allChannels = [];
+function kidHidden(k) {
+  k = k || curKid();
+  return k && Array.isArray(k.hide) ? k.hide : [];
+}
+function applyKidFilter() {
+  const h = kidHidden();
+  const off = settings.catOff || [];
+  channels = allChannels.filter((c) => h.indexOf(c.id) < 0 && off.indexOf(catOf(c.id)) < 0);
+}
+function setCatOff(list) {
+  settings.catOff = (list || []).filter((k) => CATS.some((c) => c.k === k));
+  saveSettings();
+  applyKidFilter();
+  enforceChannels();
+  if (current === "home") {
+    if (/^cat:/.test(homeView) && settings.catOff.indexOf(homeView.slice(4)) >= 0) homeView = "all";
+    rerenderHomeKeepFocus();
+  }
+}
+function renderCatSettings() {
+  const off = settings.catOff || [];
+  $("#cat-togs").innerHTML = CATS.map((c) => {
+    const n = allChannels.filter((x) => catOf(x.id) === c.k).length;
+    return '<button class="f tog cat-tog' + (off.indexOf(c.k) < 0 ? " on" : "") + '" data-catoff="' + c.k + '"><span>' + catTitle(c.k, c.n) + " <small>(" + n + ' قناة)</small></span><i class="sw"></i></button>';
+  }).join("");
+}
+/* guess a channel's category from YouTube's own data (video categories of its latest uploads) */
+const YT_CAT = { "27": "learn", "28": "learn", "26": "learn", "10": "songs", "1": "stories", "24": "fun", "23": "fun", "20": "fun", "15": "fun", "17": "fun", "19": "fun", "22": "fun" };
+function guessCat(ch) {
+  if (/قرآن|القرآن|القران|قران|quran|qur'?an|تلاوة|تجويد/i.test(ch.title || "")) return Promise.resolve("quran");
+  if (DEMO || !CFG.apiKey || !ch.uploads) return Promise.resolve("");
+  return yt("playlistItems", { part: "contentDetails", playlistId: ch.uploads, maxResults: 12 }).then((j) => {
+    const ids = (j.items || []).map((i) => i.contentDetails && i.contentDetails.videoId).filter(Boolean);
+    if (!ids.length) return "";
+    return yt("videos", { part: "snippet", id: ids.join(",") }).then((v) => {
+      const count = {};
+      let quran = 0;
+      (v.items || []).forEach((it) => {
+        const sn = it.snippet || {};
+        if (/قرآن|القرآن|القران|سورة|تلاوة|quran|surah/i.test(sn.title || "")) quran++;
+        const k = YT_CAT[sn.categoryId];
+        if (k) count[k] = (count[k] || 0) + 1;
+      });
+      if (quran >= 4) return "quran";
+      let best = "", bn = 0;
+      Object.keys(count).forEach((k) => {
+        if (count[k] > bn) {
+          best = k;
+          bn = count[k];
+        }
+      });
+      return best;
+    });
+  }).catch(() => "");
+}
+let kchKid = null;
+function renderKidChans() {
+  const box = $("#kid-chans");
+  const k = kids.find((x) => x.id === kchKid);
+  if (!k) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const h = kidHidden(k);
+  box.classList.remove("hidden");
+  box.innerHTML = '<div class="kch-head">' + kidAvatar(k, false) + "<b>قنوات " + esc(k.name) + '</b><button class="f btn ghost" data-kch-close="1">تمّ</button></div><p class="muted">اضغط على القناة لتخفيها أو تظهرها لـ' + esc(k.name) + " بس. القنوات الجديدة بتظهر للكل.</p>" +
+    allChannels.map((c) => '<button class="f tog kch' + (h.indexOf(c.id) < 0 ? " on" : "") + '" data-kch="' + esc(c.id) + '"><span><img src="' + esc(c.thumb) + '" alt="">' + esc(c.title) + '</span><i class="sw"></i></button>').join("");
+}
+function toggleKidChan(chId) {
+  const k = kids.find((x) => x.id === kchKid);
+  if (!k) return;
+  const h = kidHidden(k).slice();
+  const i = h.indexOf(chId);
+  if (i >= 0) h.splice(i, 1);
+  else h.push(chId);
+  k.hide = h;
+  store.set("kids", kids);
+  if (k.id === kidId) {
+    applyKidFilter();
+    enforceChannels();
+  }
+  renderKidChans();
+  focusEl($('#kid-chans [data-kch="' + chId + '"]'));
+}
+
+/* ---------- kid avatars (animals) ---------- */
+const AVATARS = {
+  cat: '<path d="M14 18l4-12 8 9M50 18l-4-12-8 9" fill="#fff"/><circle cx="32" cy="36" r="20" fill="#fff"/><circle cx="25" cy="34" r="3" fill="#1f1d5a"/><circle cx="39" cy="34" r="3" fill="#1f1d5a"/><path d="M29 41l3 2 3-2" stroke="#1f1d5a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M14 40h8M42 40h8" stroke="#1f1d5a" stroke-width="1.5"/>',
+  bear: '<circle cx="16" cy="18" r="7" fill="#c8874a"/><circle cx="48" cy="18" r="7" fill="#c8874a"/><circle cx="32" cy="35" r="20" fill="#c8874a"/><ellipse cx="32" cy="42" rx="9" ry="7" fill="#f3d2a8"/><circle cx="25" cy="31" r="3" fill="#1f1d5a"/><circle cx="39" cy="31" r="3" fill="#1f1d5a"/><circle cx="32" cy="39" r="3" fill="#1f1d5a"/>',
+  bunny: '<ellipse cx="23" cy="13" rx="5" ry="12" fill="#fff"/><ellipse cx="41" cy="13" rx="5" ry="12" fill="#fff"/><ellipse cx="23" cy="14" rx="2.4" ry="8" fill="#ffb3c1"/><ellipse cx="41" cy="14" rx="2.4" ry="8" fill="#ffb3c1"/><circle cx="32" cy="38" r="18" fill="#fff"/><circle cx="26" cy="36" r="2.6" fill="#1f1d5a"/><circle cx="38" cy="36" r="2.6" fill="#1f1d5a"/><path d="M30 42h4l-2 2z" fill="#ff5d73"/>',
+  panda: '<circle cx="15" cy="17" r="7" fill="#1f1d5a"/><circle cx="49" cy="17" r="7" fill="#1f1d5a"/><circle cx="32" cy="35" r="20" fill="#fff"/><ellipse cx="24" cy="33" rx="5" ry="6" fill="#1f1d5a"/><ellipse cx="40" cy="33" rx="5" ry="6" fill="#1f1d5a"/><circle cx="25" cy="33" r="1.8" fill="#fff"/><circle cx="39" cy="33" r="1.8" fill="#fff"/><ellipse cx="32" cy="42" rx="3" ry="2" fill="#1f1d5a"/>',
+  fox: '<path d="M10 10l12 14H12zM54 10L42 24h10z" fill="#ff8a3d"/><path d="M12 24h40L32 54z" fill="#ff8a3d"/><path d="M20 34l12 20 12-20-12 6z" fill="#fff"/><circle cx="24" cy="31" r="2.8" fill="#1f1d5a"/><circle cx="40" cy="31" r="2.8" fill="#1f1d5a"/><circle cx="32" cy="50" r="2.6" fill="#1f1d5a"/>',
+  owl: '<path d="M14 14l8 8M50 14l-8 8" stroke="#8a5a3c" stroke-width="5" stroke-linecap="round"/><ellipse cx="32" cy="36" rx="20" ry="21" fill="#8a5a3c"/><circle cx="24" cy="32" r="8" fill="#fff"/><circle cx="40" cy="32" r="8" fill="#fff"/><circle cx="24" cy="32" r="3.5" fill="#1f1d5a"/><circle cx="40" cy="32" r="3.5" fill="#1f1d5a"/><path d="M29 40h6l-3 5z" fill="#ffd23f"/>',
+  frog: '<circle cx="21" cy="20" r="8" fill="#2ec98b"/><circle cx="43" cy="20" r="8" fill="#2ec98b"/><ellipse cx="32" cy="38" rx="21" ry="16" fill="#2ec98b"/><circle cx="21" cy="20" r="4" fill="#fff"/><circle cx="43" cy="20" r="4" fill="#fff"/><circle cx="21" cy="20" r="2" fill="#1f1d5a"/><circle cx="43" cy="20" r="2" fill="#1f1d5a"/><path d="M22 42q10 7 20 0" stroke="#1f1d5a" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
+};
+const AV_KEYS = Object.keys(AVATARS);
+function cycleKidAvatar(id) {
+  const k = kids.find((x) => x.id === id);
+  if (!k) return;
+  const keys = [""].concat(AV_KEYS);
+  k.av = keys[(keys.indexOf(k.av || "") + 1) % keys.length];
+  store.set("kids", kids);
+  renderKidsSettings();
+  renderKidChip();
+  focusEl($('#kid-list [data-kav="' + id + '"]'));
+}
+
+/* ---------- allowed hours (schedule) ---------- */
+const DEF_SCHED = { on: false, wd: [16 * 60, 19 * 60], we: [10 * 60, 20 * 60] };
+function sched() {
+  if (!settings.sched) settings.sched = JSON.parse(JSON.stringify(DEF_SCHED));
+  return settings.sched;
+}
+function fmtClock(m) {
+  m = (m + 1440) % 1440;
+  const h = Math.floor(m / 60), mm = m % 60;
+  const h12 = h % 12 || 12;
+  return h12 + ":" + pad2(mm) + (h < 12 ? " الصبح" : h < 17 ? " الظهر" : " المسا");
+}
+function todayWindow() {
+  const d = new Date();
+  const we = d.getDay() === 5 || d.getDay() === 6; // Friday, Saturday
+  const w = sched()[we ? "we" : "wd"];
+  return { from: w[0], to: w[1], now: d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 };
+}
+function schedOverride() {
+  return Date.now() < (store.get("schedOverride", 0) || 0);
+}
+function schedAllowed() {
+  if (!sched().on || schedOverride()) return true;
+  const w = todayWindow();
+  return w.now >= w.from && w.now < w.to;
+}
+function schedLeftSec() {
+  if (!sched().on) return Infinity;
+  if (schedOverride()) return Math.max(0, (store.get("schedOverride", 0) - Date.now()) / 1e3);
+  const w = todayWindow();
+  if (w.now < w.from || w.now >= w.to) return 0;
+  return (w.to - w.now) * 60;
+}
+function renderBedtime() {
+  const w = todayWindow();
+  const before = w.now < w.from;
+  $("#bt-title").textContent = before ? "لسا ما إجا وقت الفرجة" : "وقت النوم والراحة";
+  $("#bt-msg").textContent = before ? "الفرجة بتبلش الساعة " + fmtClock(w.from) + ". العبوا واقرأوا شوي!" : "خلص وقت الفرجة لليوم. تصبحوا على خير، وبكرة منكمّل!";
+  $("#bedtime").classList.toggle("morning", before);
+}
+function goBedtime() {
+  if (current === "player") {
+    try {
+      histSave(true);
+      player.pauseVideo();
+      player.stopVideo();
+    } catch (e) {
+    }
+    clearInterval(tickT);
+    clearInterval(guardT);
+    curVid = null;
+    hideOSD();
+    clearEnd();
+    endBreak(false);
+  }
+  renderBedtime();
+  show("bedtime");
+  focusEl($('[data-act="bt-parent"]'));
+}
+function schedStep(path, delta) {
+  const s = sched();
+  const p = path.split(".");
+  const arr = s[p[0]];
+  const i = +p[1];
+  let v = arr[i] + delta;
+  if (i === 0) v = clamp(v, 0, arr[1] - 30);
+  else v = clamp(v, arr[0] + 30, 24 * 60);
+  arr[i] = v;
+  saveSettings();
+  renderSchedSettings();
+}
+function renderSchedSettings() {
+  const s = sched();
+  $("#sched-tog").classList.toggle("on", !!s.on);
+  $("#sched-rows").classList.toggle("dim", !s.on);
+  ["wd.0", "wd.1", "we.0", "we.1"].forEach((k) => {
+    const p = k.split(".");
+    $('[data-schv="' + k + '"]').textContent = fmtClock(s[p[0]][+p[1]]);
+  });
+  const ov = schedOverride();
+  $("#sched-ov").textContent = ov ? "مفتوح مؤقتاً لحد " + fmtClock(Math.round((new Date(store.get("schedOverride", 0)).getHours()) * 60 + new Date(store.get("schedOverride", 0)).getMinutes())) : "";
+}
+
+/* ---------- gentle warnings before the time runs out ---------- */
+let warnT = null;
+function showWarn(text, kind) {
+  const el = $("#warn");
+  $("#warn-text").textContent = text;
+  el.className = "warn on" + (kind ? " " + kind : "");
+  clearTimeout(warnT);
+  warnT = setTimeout(() => el.classList.remove("on"), 7e3);
+}
+let lastCountdown = -1;
+function stopLeftSec() {
+  return Math.min(remainingSec(), schedLeftSec());
+}
+function warnTick() {
+  const sLeft = schedLeftSec();
+  const lLeft = remainingSec();
+  const left = Math.min(sLeft, lLeft);
+  const watching = current === "player" && curVid;
+  // schedule: warn even when browsing
+  if (sched().on && !schedOverride() && isFinite(sLeft)) {
+    const key = todayStr() + ":" + todayWindow().to;
+    const st = store.get("schedWarn", {});
+    const lvl = st.key === key ? st.lvl : 0;
+    if (sLeft > 0 && sLeft <= 300 && lvl < 1) {
+      store.set("schedWarn", { key, lvl: 1 });
+      showWarn("باقي 5 دقايق وبيخلص وقت الفرجة. خلّصوا الفيديو على مهل", "soft");
+    } else if (sLeft > 0 && sLeft <= 60 && lvl < 2) {
+      store.set("schedWarn", { key, lvl: 2 });
+      showWarn("باقي دقيقة وحدة. يلا نجهز للنوم!", "soft");
+    }
+  }
+  if (current !== "bedtime" && current !== "pin" && current !== "settings" && !locked && !schedAllowed()) {
+    goBedtime();
+    return;
+  }
+  // last seconds: a friendly countdown in the corner of the player
+  const cd = $("#p-count");
+  if (watching && left <= 10 && left > 0) {
+    const n = Math.ceil(left);
+    if (n !== lastCountdown) {
+      lastCountdown = n;
+      cd.textContent = n;
+      cd.classList.add("on");
+    }
+  } else if (lastCountdown !== -1) {
+    lastCountdown = -1;
+    cd.classList.remove("on");
+  }
+}
+
+/* ---------- eye break ---------- */
+const BREAK_OPTS = [0, 15, 20, 30];
+const BREAK_LEN = 60;
+let contWatch = 0, lastWatchAt = 0, breakT = null, breakLeft = 0, inBreak = false;
+const BREAK_TIPS = ["طلّع على شي بعيد من الشباك", "غمّض عيونك وعدّ لـ 10", "قوم تمطّع وارفع إيديك لفوق", "رمّش 10 مرات بسرعة", "اشرب شوية مي"];
+function breakTick(dt) {
+  if (!settings.eyeBreak) return;
+  if (Date.now() - lastWatchAt > 5 * 60 * 1e3) contWatch = 0;
+  lastWatchAt = Date.now();
+  contWatch += dt;
+  if (!inBreak && contWatch >= settings.eyeBreak * 60) startBreak();
+}
+function startBreak() {
+  inBreak = true;
+  contWatch = 0;
+  wePaused = true;
   try {
-    r = JSON.parse(decodeURIComponent(m[1]));
+    player.pauseVideo();
   } catch (e) {
   }
-  try {
-    st = JSON.parse(sessionStorage.getItem("farja.tv") || "null");
-  } catch (e) {
+  hideOSD();
+  breakLeft = BREAK_LEN;
+  $("#p-break").classList.remove("hidden");
+  let tip = 0;
+  const paint = () => {
+    $("#br-count").textContent = breakLeft;
+    if (breakLeft % 12 === 0) $("#br-tip").textContent = BREAK_TIPS[tip++ % BREAK_TIPS.length];
+    $("#br-ring").style.strokeDashoffset = String(283 * (1 - breakLeft / BREAK_LEN));
+  };
+  paint();
+  clearInterval(breakT);
+  breakT = setInterval(() => {
+    breakLeft--;
+    paint();
+    if (breakLeft <= 0) endBreak(true);
+  }, 1e3);
+  remoteNotify();
+}
+function endBreak(resume) {
+  if (!inBreak) return;
+  inBreak = false;
+  clearInterval(breakT);
+  $("#p-break").classList.add("hidden");
+  if (resume && current === "player" && player) {
+    wePaused = false;
+    try {
+      player.playVideo();
+    } catch (e) {
+    }
+    toast("برافو! يلا نكمّل");
   }
-  try {
-    history.replaceState(null, "", location.pathname + location.search);
-  } catch (e) {
-  }
-  if (!r || !st) return false;
-  if (st.kid && st.kid !== kidId && kids.some((k) => k.id === st.kid)) {
-    kidId = st.kid;
-    usage = store.get(pk("usage"), null);
-    hist = store.get(pk("hist"), []);
-    favs = store.get(pk("favs"), []);
-    favCh = store.get(pk("favCh"), []);
-  }
-  if (r.watched) {
-    addWatch(+r.watched);
+}
+
+/* ---------- reward time for Quran / learning videos ---------- */
+function rewardTick(dt, chId) {
+  if (!settings.reward || !limitOn()) return;
+  if (EDU_CATS.indexOf(catOf(chId)) < 0) return;
+  const u = getUsage();
+  u.edu = (u.edu || 0) + dt;
+  u.rew = u.rew || 0;
+  if (u.edu >= (u.rew + 1) * 600 && u.rew < 6) {
+    u.rew++;
+    u.bonus += 5;
+    u.warned = 0;
     saveUsage();
+    showWarn("برافو! كسبت 5 دقايق زيادة لأنك حضرت شي مفيد", "star");
   }
-  playFrom = st.playFrom;
-  playList = st.list.map((v2) => Object.assign({}, v2, { ch: v2.ch && (channels.find((c) => c.id === v2.ch.id) || v2.ch) }));
-  playIdx = st.playIdx - st.offset;
-  const v = playList[playIdx];
-  if (v) histSaveTv(v, r.ended ? r.dur || v.dur : r.pos || 0, r.dur || v.dur || 0);
-  lastFocus.homeKey = st.homeKey;
-  lastFocus.retFrom = st.from;
-  const goBackToList = () => {
-    if (st.from === "channel" && st.chId && channels.some((c) => c.id === st.chId)) {
-      openChannel(st.chId);
-      if (st.chTab === "pl" && st.plMeta) setTab("pl", st.plMeta);
-    } else if (st.from === "search") {
-      openSearch();
+}
+
+/* ---------- watch log (for the parents' report) ---------- */
+let wlog = store.get("wlog", {});
+let wlogDirty = 0;
+function logTick(dt, v) {
+  const day = todayStr();
+  const d = wlog[day] || (wlog[day] = {});
+  const k = d[kidId] || (d[kidId] = { s: 0, c: {}, v: {} });
+  k.s += dt;
+  const chId = videoChannelId(v) || "";
+  if (chId) k.c[chId] = (k.c[chId] || 0) + dt;
+  if (v && v.id) {
+    const e = k.v[v.id] || (k.v[v.id] = [0, String(v.title || "").slice(0, 60), String(v.ch && v.ch.title || "").slice(0, 40)]);
+    e[0] += dt;
+  }
+  if (++wlogDirty >= 30) saveLog();
+}
+function saveLog() {
+  wlogDirty = 0;
+  const days = Object.keys(wlog).sort();
+  while (days.length > 8) delete wlog[days.shift()];
+  Object.keys(wlog).forEach((day) => Object.keys(wlog[day]).forEach((kid) => {
+    const vv = wlog[day][kid].v;
+    const ids = Object.keys(vv);
+    if (ids.length > 40) ids.sort((a, b) => vv[b][0] - vv[a][0]).slice(40).forEach((id) => delete vv[id]);
+  }));
+  store.set("wlog", wlog);
+}
+function buildReport(days) {
+  days = clamp(+days || 1, 1, 7);
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 864e5);
+    dates.push(d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()));
+  }
+  const kidList = kids.length ? kids : [{ id: "main", name: "" }];
+  const chTitle = (id) => {
+    const c = allChannels.find((x) => x.id === id);
+    return c ? c.title.slice(0, 40) : "";
+  };
+  const out = kidList.map((k) => {
+    const perDay = dates.map((day) => Math.round((wlog[day] && wlog[day][k.id] ? wlog[day][k.id].s : 0) / 60));
+    const chs2 = {}, vids = {};
+    dates.forEach((day) => {
+      const e = wlog[day] && wlog[day][k.id];
+      if (!e) return;
+      Object.keys(e.c).forEach((id) => chs2[id] = (chs2[id] || 0) + e.c[id]);
+      Object.keys(e.v).forEach((id) => {
+        const x = e.v[id];
+        if (!vids[id]) vids[id] = [0, x[1], x[2]];
+        vids[id][0] += x[0];
+      });
+    });
+    const topC = Object.keys(chs2).sort((a, b) => chs2[b] - chs2[a]).slice(0, 5).map((id) => [chTitle(id) || "قناة", Math.round(chs2[id] / 60), catOf(id)]);
+    const topV = Object.keys(vids).sort((a, b) => vids[b][0] - vids[a][0]).slice(0, 6).map((id) => [vids[id][1].slice(0, 50), vids[id][2].slice(0, 30), Math.round(vids[id][0] / 60), id]);
+    let edu = 0;
+    Object.keys(chs2).forEach((id) => {
+      if (EDU_CATS.indexOf(catOf(id)) >= 0) edu += chs2[id];
+    });
+    return { name: k.name || "", color: k.color || "", total: perDay.reduce((a, b) => a + b, 0), perDay, edu: Math.round(edu / 60), topC, topV };
+  });
+  return { type: "report", t: Date.now(), days, dates, kids: out };
+}
+
+/* ---------- relay: our own Cloudflare Worker if configured, else ntfy.sh ---------- */
+const RELAY = String(CFG.relay || "").replace(/\/$/, "");
+function relayPub(key, obj) {
+  const body = JSON.stringify(obj);
+  if (RELAY) return fetch(RELAY + "/r/" + room + "/b/" + key, { method: "POST", body });
+  return fetch(NTFY + "/" + topic(key), { method: "POST", body });
+}
+let cmdAfter = -1, pollGen = 0;
+function pollCmds(gen) {
+  if (gen !== pollGen) return;
+  fetch(RELAY + "/r/" + room + "/c?after=" + cmdAfter + "&wait=20", { cache: "no-store" }).then((r) => r.json()).then((j) => {
+    sseAliveAt = Date.now();
+    if (gen !== pollGen) return;
+    (j.cmds || []).forEach((c) => {
+      cmdAfter = Math.max(cmdAfter, c.seq);
+      let x = null;
+      try {
+        x = JSON.parse(c.data);
+      } catch (e) {
+      }
+      if (x) handleCmd(x);
+    });
+    if (typeof j.seq === "number" && cmdAfter < 0) cmdAfter = j.seq;
+    setTimeout(() => pollCmds(gen), 250);
+  }).catch(() => {
+    if (gen === pollGen) setTimeout(() => pollCmds(gen), 5e3);
+  });
+}
+function handleCmd(c) {
+  if (!c || !c.cmd || seenCmd[c.id]) return;
+  seenCmd[c.id] = 1;
+  if (c.t && Math.abs(Date.now() - c.t) > 2 * 60 * 1e3) return;
+  onRemote(c);
+}
+function onRemoteExtra(c) {
+  switch (c.cmd) {
+    case "report":
+      relayPub("r", buildReport(c.days)).catch(() => {
+      });
+      return true;
+    case "block":
+      if (c.vid) blockLocal(String(c.vid), c.title);
+      return true;
+    case "unblock": {
+      const l = store.get("blockedLocal", []).filter((b) => b.id !== c.vid);
+      store.set("blockedLocal", l);
+      blockedCache = null;
+      return true;
+    }
+    case "cats":
+      setCatOff(c.off);
+      showRemoteMsg("ماما وبابا غيّروا الأقسام المفتوحة");
+      return true;
+    case "schedOpen":
+      store.set("schedOverride", Date.now() + (+c.n || 60) * 60 * 1e3);
+      if (current === "bedtime") {
+        show("home");
+        renderHome();
+        focusHome(true);
+      }
+      showRemoteMsg("ماما وبابا فتحوا الفرجة " + (+c.n || 60) + " دقيقة");
+      return true;
+  }
+  return false;
+}
+
+
+/* ---------- Amira-style home: right icon rail, hero for the focused video, full-screen backdrop ---------- */
+let homeView = "all";
+const RAIL_IC = {
+  search: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.8"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+  all: '<svg viewBox="0 0 24 24"><path d="M12 3L2 12h3v8h5v-6h4v6h5v-8h3z" fill="currentColor"/></svg>',
+  favs: '<svg viewBox="0 0 24 24"><path d="M12 2l3 6.5 7 .9-5.2 4.8 1.4 7L12 17.8 5.8 21.2l1.4-7L2 9.4l7-.9z" fill="#ffd23f"/></svg>',
+  chans: '<svg viewBox="0 0 24 24"><circle cx="7" cy="8" r="4" fill="#ff5d73"/><circle cx="17" cy="8" r="4" fill="#2ec98b"/><circle cx="7" cy="17" r="4" fill="#9b5de5"/><circle cx="17" cy="17" r="4" fill="#ffd23f"/></svg>',
+  parent: '<svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="11" rx="3" fill="currentColor"/></svg>',
+};
+function railIcon(k) {
+  if (RAIL_IC[k]) return RAIL_IC[k];
+  if (k === "picks") return CAT_ICONS.picks;
+  if (/^cat:/.test(k)) return CAT_ICONS[k.slice(4)] || "";
+  return "";
+}
+function renderRail() {
+  const items = [["search", "ابحث", "search-btn"], ["all", "الرئيسية"]];
+  if (picksList().length) items.push(["picks", "اختيار بابا"]);
+  CATS.forEach((c) => {
+    if (channels.some((ch) => catOf(ch.id) === c.k)) items.push(["cat:" + c.k, c.n]);
+  });
+  items.push(["favs", "مفضلتي"], ["chans", "القنوات"], ["parent", "الأهل", "parent-btn"]);
+  const a = document.activeElement;
+  const had = a && a.closest && a.closest("#rail-items") ? a.id ? "#" + a.id : '#rail-items [data-view="' + a.getAttribute("data-view") + '"]' : null;
+  $("#rail-items").innerHTML = items.map((it) => '<button class="f rail-it' + (homeView === it[0] ? " on" : "") + '"' + (it[2] ? ' id="' + it[2] + '"' : ' data-view="' + esc(it[0]) + '"') + '><i class="ri">' + railIcon(it[0]) + "</i><span>" + esc(it[1]) + "</span></button>").join("");
+  if (had) focusEl($(had));
+}
+const chBubble2 = (c, row) => '<button class="f ch" data-id="' + esc(c.id) + '" data-key="' + row + ":" + esc(c.id) + '"><span class="av"><img src="' + esc(c.thumb) + '" alt="">' + (isFavCh(c.id) ? '<i class="ch-heart">❤</i>' : "") + '</span><span class="nm">' + esc(c.title) + "</span></button>";
+function channelRows(list, html) {
+  list.forEach((c) => {
+    const l = visible(feedData[c.id] || []).slice(0, 12).map((v) => Object.assign({}, v, { ch: c }));
+    if (!l.length) return;
+    const key = "c:" + c.id;
+    rowLists[key] = l;
+    html.push(rowHTML(esc(c.title), l.map((v, i) => videoCard(v, key, i, false)).join("") + '<button class="f more" data-id="' + esc(c.id) + '" data-key="more:' + esc(c.id) + '"><span class="more-in"><img src="' + esc(c.thumb) + '" alt=""><b>كل فيديوهات القناة</b></span></button>'));
+  });
+}
+function renderHomeView() {
+  const html = [];
+  const empty = (t) => '<div class="empty dark">' + EMPTY_SVG + "<p>" + t + "</p></div>";
+  if (homeView === "picks") {
+    const p = picksList();
+    rowLists.picks = p;
+    if (p.length) html.push(rowHTML(catTitle("picks", "اختيار بابا وماما"), p.map((v, i) => videoCard(v, "picks", i, true)).join("")));
+    else html.push(empty("ما في اختيارات لسا."));
+  } else if (/^cat:/.test(homeView)) {
+    const k = homeView.slice(4);
+    const inCat = channels.filter((c) => catOf(c.id) === k);
+    const mix = buildFeed(30, inCat);
+    const key = "cat:" + k;
+    rowLists[key] = mix;
+    if (mix.length) html.push(rowHTML(catTitle(k, "الجديد في " + catName(k)), mix.map((v, i) => videoCard(v, key, i, true)).join("")));
+    if (inCat.length) html.push(rowHTML("القنوات", inCat.map((c) => chBubble2(c, "ch")).join(""), "chans"));
+    channelRows(inCat, html);
+    if (!html.length) html.push(empty("ما في فيديوهات هون لسا."));
+  } else if (homeView === "favs") {
+    const cont = continueList();
+    if (cont.length) {
+      rowLists.cont = cont.map((h) => Object.assign({}, h, { ch: channels.find((c) => h.ch && c.id === h.ch.id) || h.ch }));
+      html.push(rowHTML("كمّل المشاهدة", rowLists.cont.map((v, i) => videoCard(v, "cont", i, false)).join("")));
+    }
+    const fv = favs.filter((f) => channelAllowed(f.ch && f.ch.id) && !isBlocked(f.id));
+    rowLists.favs = fv.map((f) => Object.assign({}, f, { ch: channels.find((c) => f.ch && c.id === f.ch.id) || f.ch }));
+    if (fv.length) html.push(rowHTML("مفضلتي ❤", rowLists.favs.map((v, i) => videoCard(v, "favs", i, true)).join("")));
+    const fc = channels.filter((c) => isFavCh(c.id));
+    if (fc.length) html.push(rowHTML("قنواتي المفضلة", fc.map((c) => chBubble2(c, "fch")).join(""), "chans"));
+    if (!html.length) html.push(empty("لسا ما في شي بالمفضلة. اضغط ❤ على أي فيديو أو قناة."));
+  } else if (homeView === "chans") {
+    const fc = channels.filter((c) => isFavCh(c.id));
+    if (fc.length) html.push(rowHTML("قنواتي المفضلة", fc.map((c) => chBubble2(c, "fch")).join(""), "chans"));
+    for (let i = 0; i < channels.length; i += 7) html.push(rowHTML(i ? "" : "كل القنوات", channels.slice(i, i + 7).map((c) => chBubble2(c, "ch")).join(""), "chans" + (i ? " no-h" : "")));
+  }
+  return html.join("");
+}
+function setView(v) {
+  homeView = v;
+  lastFocus.homeKey = null;
+  heroEl = null;
+  renderHome();
+  $("#home-rows").style.transform = "";
+  const first = $("#home-rows .f");
+  if (first) focusEl(first);
+  else focusEl($('#rail-items [data-view="' + v + '"]'));
+}
+
+/* hero + backdrop follow the focused card */
+let heroV = null, heroEl = null, heroT = null, stageOn = "a", stageUrl = "";
+function bigThumb(v) {
+  const m = /i\.ytimg\.com\/vi\/([\w-]{11})\//.exec(v.thumb || "") || (/^[\w-]{11}$/.test(v.id) ? [0, v.id] : null);
+  return m ? "https://i.ytimg.com/vi/" + m[1] + "/maxresdefault.jpg" : v.thumb || "";
+}
+function setStage(url, fallback) {
+  if (!url || url === stageUrl) return;
+  stageUrl = url;
+  const apply = (u) => {
+    if (stageUrl !== url) return;
+    const next = stageOn === "a" ? "b" : "a";
+    const el = $("#st-" + next);
+    el.style.backgroundImage = 'url("' + u.replace(/"/g, "%22") + '")';
+    el.classList.add("on");
+    $("#st-" + stageOn).classList.remove("on");
+    stageOn = next;
+  };
+  if (/^data:/.test(url)) {
+    apply(url);
+    return;
+  }
+  const im = new Image();
+  im.onload = () => apply(im.naturalWidth > 200 || !fallback ? url : fallback);
+  im.onerror = () => {
+    if (fallback) apply(fallback);
+  };
+  im.src = url;
+}
+function fmtAge(v) {
+  return v.at ? ageText(v.at) : "";
+}
+function setHero(v, el) {
+  heroV = v;
+  heroEl = el;
+  const row = el ? el.getAttribute("data-row") || "" : "";
+  const cat = v.ch && catOf(v.ch.id);
+  $("#hi-chip").innerHTML = (cat ? catTitle(cat, catName(cat)) + " · " : row === "picks" ? catTitle("picks", "اختيار بابا") + " · " : "") + esc(v.ch && v.ch.title || "");
+  $("#hi-title").textContent = v.title || "";
+  const meta = [];
+  if (v.dur) meta.push(fmtTime(v.dur));
+  if (row === "cont" && v.dur) meta.push("باقي " + fmtTime(Math.max(0, v.dur - (v.pos || 0))));
+  else if (fmtAge(v)) meta.push(fmtAge(v));
+  $("#hi-meta").innerHTML = meta.map(esc).join(' <i>•</i> ');
+  $("#hi-play").classList.remove("hidden");
+  $("#hi-play span").textContent = row === "cont" ? "كمّل" : "شغّل";
+  $("#hi-ch").classList.toggle("hidden", !(v.ch && channelAllowed(v.ch.id)));
+  $("#hi-fav").classList.remove("hidden");
+  $("#hi-fav").classList.toggle("on", isFav(v.id));
+  $("#hero").classList.add("show");
+  clearTimeout(heroT);
+  heroT = setTimeout(() => setStage(bigThumb(v), v.thumb), 220);
+}
+function setHeroCh(c, el) {
+  heroV = { ch: c, isCh: true };
+  heroEl = el;
+  const cat = catOf(c.id);
+  $("#hi-chip").innerHTML = cat ? catTitle(cat, catName(cat)) : "قناة";
+  $("#hi-title").textContent = c.title;
+  const n = visible(feedData[c.id] || []).filter((v) => v.at && Date.now() - v.at < 7 * 864e5).length;
+  $("#hi-meta").textContent = n ? n + " فيديو جديد هالأسبوع" : "";
+  $("#hi-play").classList.remove("hidden");
+  $("#hi-play span").textContent = "افتح القناة";
+  $("#hi-ch").classList.add("hidden");
+  $("#hi-fav").classList.add("hidden");
+  $("#hero").classList.add("show");
+  const first = (feedData[c.id] || [])[0];
+  clearTimeout(heroT);
+  heroT = setTimeout(() => setStage(first ? bigThumb(first) : c.thumb, first ? first.thumb : ""), 220);
+}
+function heroDefault() {
+  const hr = (/* @__PURE__ */ new Date()).getHours();
+  const k = curKid();
+  $("#hi-chip").textContent = (hr < 12 ? "صباح الخير" : hr < 17 ? "نهارك سعيد" : "مساء الخير") + (k && kids.length ? " يا " + k.name : "") + "!";
+  $("#hi-title").textContent = "شو بدكم تشوفوا اليوم؟";
+  $("#hi-meta").textContent = "";
+  ["hi-play", "hi-ch", "hi-fav"].forEach((id) => $("#" + id).classList.add("hidden"));
+}
+function heroFocus(el) {
+  if (!el || current !== "home") return;
+  const home = $("#home");
+  home.classList.toggle("nav-open", !!el.closest("#rail"));
+  if (el.closest("#home-rows")) {
+    if (el.classList.contains("v")) {
+      const v = (rowLists[el.getAttribute("data-row")] || [])[+el.getAttribute("data-i")];
+      if (v) setHero(v, el);
+    } else if (el.classList.contains("ch") || el.classList.contains("more")) {
+      const c = channels.find((x) => x.id === el.getAttribute("data-id"));
+      if (c) setHeroCh(c, el);
+    }
+  }
+}
+function heroAction(id) {
+  if (!heroV) return;
+  if (id === "hi-play") {
+    if (heroV.isCh) {
+      openChannel(heroV.ch.id);
+      return;
+    }
+    if (heroEl && document.body.contains(heroEl)) heroEl.click();
+    return;
+  }
+  if (id === "hi-ch" && heroV.ch) {
+    openChannel(heroV.ch.id);
+    return;
+  }
+  if (id === "hi-fav" && !heroV.isCh) {
+    const v = heroV;
+    if (isFav(v.id)) {
+      favs = favs.filter((f) => f.id !== v.id);
+      toast("انشال من المفضلة");
     } else {
+      favs = [slimVideo(v)].concat(favs).slice(0, 100);
+      toast("انضاف للمفضلة ❤");
+    }
+    store.set(pk("favs"), favs);
+    $("#hi-fav").classList.toggle("on", isFav(v.id));
+  }
+}
+function homeScrollTo(el) {
+  const rowsBox = $("#home-rows");
+  const row = el.closest(".hrow");
+  if (!row) return;
+  const rows = $$("#home-rows .hrow");
+  const first = rows[0];
+  const off = Math.max(0, row.offsetTop - first.offsetTop);
+  rowsBox.style.transform = "translateY(" + -off + "px)";
+  rowsBox.style.webkitTransform = "translateY(" + -off + "px)";
+  rows.forEach((r) => r.classList.toggle("past", r.offsetTop < row.offsetTop));
+}
+function tickClock() {
+  const d = new Date();
+  const el = $("#clock");
+  if (el) el.textContent = pad2(d.getHours() % 12 || 12) + ":" + pad2(d.getMinutes());
+}
+
+function onClickPlus(b, act) {
+  if (b.hasAttribute("data-view")) {
+    setView(b.getAttribute("data-view"));
+    return true;
+  }
+  if (b.id === "hi-play" || b.id === "hi-ch" || b.id === "hi-fav") {
+    heroAction(b.id);
+    return true;
+  }
+  if (b.hasAttribute("data-kav")) {
+    cycleKidAvatar(b.getAttribute("data-kav"));
+    return true;
+  }
+  if (b.hasAttribute("data-kch-open")) {
+    kchKid = b.getAttribute("data-kch-open");
+    renderKidChans();
+    focusEl($("#kid-chans [data-kch]") || $("#kid-chans [data-kch-close]"));
+    return true;
+  }
+  if (b.hasAttribute("data-kch-close")) {
+    const id = kchKid;
+    kchKid = null;
+    renderKidChans();
+    focusEl($('#kid-list [data-kch-open="' + id + '"]'));
+    return true;
+  }
+  if (b.hasAttribute("data-kch")) {
+    toggleKidChan(b.getAttribute("data-kch"));
+    return true;
+  }
+  if (b.hasAttribute("data-cat")) {
+    const id = b.getAttribute("data-cat");
+    cycleCat(id);
+    b.innerHTML = catOf(id) ? catTitle(catOf(id), catName(catOf(id))) : "تصنيف";
+    return true;
+  }
+  if (b.hasAttribute("data-catoff")) {
+    const k = b.getAttribute("data-catoff");
+    const off = (settings.catOff || []).slice();
+    const i = off.indexOf(k);
+    if (i >= 0) off.splice(i, 1);
+    else off.push(k);
+    setCatOff(off);
+    renderCatSettings();
+    focusEl($('[data-catoff="' + k + '"]'));
+    return true;
+  }
+  if (b.id === "sched-tog") {
+    sched().on = !sched().on;
+    saveSettings();
+    renderSchedSettings();
+    return true;
+  }
+  if (b.hasAttribute("data-sch")) {
+    const p = b.getAttribute("data-sch").split("|");
+    schedStep(p[0], +p[1]);
+    return true;
+  }
+  if (b.id === "eb-btn") {
+    settings.eyeBreak = BREAK_OPTS[(BREAK_OPTS.indexOf(settings.eyeBreak || 0) + 1) % BREAK_OPTS.length];
+    saveSettings();
+    $("#eb-val").textContent = settings.eyeBreak ? "كل " + settings.eyeBreak + " دقيقة" : "مطفي";
+    return true;
+  }
+  if (act === "bt-parent") {
+    openPin({ done: () => {
+      store.set("schedOverride", Date.now() + 60 * 60 * 1e3);
       show("home");
       renderHome();
       focusHome(true);
-    }
-  };
-  if (r.timeup || remainingSec() <= 0) {
-    goBackToList();
-    timeUp();
+      toast("انفتحت الفرجة ساعة وحدة");
+    }, cancel: () => {
+      goBedtime();
+    } });
     return true;
   }
-  if (r.cmd) {
-    goBackToList();
-    setTimeout(() => onRemote(r.cmd), 300);
+  if (b.id === "sched-close") {
+    store.set("schedOverride", 0);
+    renderSchedSettings();
+    toast("رجعت المواعيد متل ما هي");
     return true;
   }
-  if (r.next && playList[playIdx + 1]) {
-    playAt(playIdx + 1);
-    return true;
-  }
-  if (r.prev && playIdx > 0) {
-    playAt(playIdx - 1);
-    return true;
-  }
-  if (r.ended && v) {
-    curVid = v.id;
-    show("player");
-    $("#yt-wrap").classList.add("hidden");
-    onEnded();
-    return true;
-  }
-  goBackToList();
-  return true;
+  return false;
 }
 function onKey(e) {
   const code = e.keyCode;
@@ -3153,7 +3818,7 @@ function onKey(e) {
     playerKey(code);
     return;
   }
-  if (current === "locked") {
+  if (current === "locked" || current === "bedtime") {
     e.preventDefault();
     if (code === 13 && t && t.classList.contains("f")) t.click();
     else if (code >= 37 && code <= 40) moveFocus({ 37: "left", 38: "up", 39: "right", 40: "down" }[code]);
@@ -3208,6 +3873,17 @@ function onKey(e) {
   if (dir) {
     e.preventDefault();
     if (current === "home") homeFocusPending = false;
+    if (current === "home" && dir === "down" && t && t.closest && t.closest("#hero")) {
+      focusEl(lastFocus.homeKey && $('#home [data-key="' + lastFocus.homeKey + '"]') || heroEl && document.body.contains(heroEl) && heroEl || $("#home-rows .f"));
+      return;
+    }
+    if (current === "home" && dir === "up" && t && t.closest && t.closest("#home-rows") && t.closest(".hrow") === $("#home-rows .hrow")) {
+      const hp = $("#hi-play");
+      if (hp && !hp.classList.contains("hidden")) {
+        focusEl(hp);
+        return;
+      }
+    }
     moveFocus(dir);
     return;
   }
@@ -3220,6 +3896,7 @@ function onClick(e) {
   const b = e.target.closest("button, [data-act]");
   if (!b) return;
   const act = b.getAttribute("data-act");
+  if (onClickPlus(b, act)) return;
   if (b.id === "search-btn") {
     openSearch();
     return;
@@ -3355,13 +4032,6 @@ function onClick(e) {
     });
     return;
   }
-  if (b.id === "pm-btn") {
-    settings.playerMode = settings.playerMode === "embed" ? "tv" : "embed";
-    saveSettings();
-    renderSettings();
-    focusEl($("#pm-btn"));
-    return;
-  }
   if (b.id === "limit-btn") {
     settings.dailyLimit = LIMITS[(LIMITS.indexOf(settings.dailyLimit) + 1) % LIMITS.length];
     saveSettings();
@@ -3408,6 +4078,7 @@ function onClick(e) {
 }
 function onFocusIn(e) {
   const el = e.target;
+  heroFocus(el);
   if (current === "channel" && el.classList && el.classList.contains("v")) {
     const total = $$("#v-grid .v").length;
     if (total - +el.getAttribute("data-i") <= 8) loadMore();
@@ -3488,7 +4159,23 @@ function init() {
       refreshChannelsSoon();
     }
   }, 3e4);
+  setInterval(warnTick, 1e3);
+  tickClock();
+  setInterval(tickClock, 15e3);
+  let wheelAt = 0;
+  $("#home").addEventListener("wheel", (e) => {
+    if (Date.now() - wheelAt < 250 || current !== "home") return;
+    wheelAt = Date.now();
+    e.preventDefault();
+    const a = document.activeElement;
+    if (!a || !a.closest("#home-rows")) {
+      focusHome(true);
+      return;
+    }
+    moveFocus(e.deltaY > 0 ? "down" : "up");
+  });
   window.addEventListener("beforeunload", () => {
+    saveLog();
     if (usage) saveUsage();
   });
   $("#sr-input").addEventListener("input", (e) => {
@@ -3520,18 +4207,6 @@ function start() {
   renderKidChip();
   loadChannels().then(() => {
     renderHome();
-    if (/#ret=/.test(location.hash)) {
-      show("tvlaunch");
-      $("#tv-launch-title").textContent = "";
-      return loadFeed().then(() => {
-        if (!handleTvReturn()) {
-          show("home");
-          renderHome();
-          focusHome(true);
-        }
-        return refreshHomeData();
-      });
-    }
     if (current === "home") {
       if (kids.length >= 2 && !locked) openKids();
       else focusHome(true);
