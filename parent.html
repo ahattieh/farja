@@ -211,7 +211,7 @@
       <div class="rc-grid">
         <button class="btn" data-cmd="speed">السرعة</button>
         <button class="btn" data-cmd="cc">الترجمة</button>
-        <button class="btn" data-cmd="adhelp">في إعلان؟ غطّيه</button>
+        <button class="btn" data-cmd="adskip">⏭ تخطّي الإعلان</button>
       </div>
       <h2 style="margin-top:18px">شغّل فيديو على التلفزيون</h2>
       <form id="rc-play" class="rc-msg" autocomplete="off">
@@ -299,7 +299,7 @@
 </div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=2.6.0"></script>
+<script src="config.js?v=2.6.1"></script>
 <script>
 (function () {
   'use strict';
@@ -749,7 +749,7 @@
     lk.querySelector('span').textContent = isLocked ? 'افتح الشاشة' : 'اقفل الشاشة';
     var inPlayer = online && st.video;
     if (online && st.state === 'ad') lab.className = 'state paused';
-    document.querySelectorAll('[data-cmd="prev"],[data-cmd="next"],[data-cmd="back10"],[data-cmd="fwd10"],[data-cmd="stop"],[data-cmd="speed"],[data-cmd="cc"],[data-cmd="adhelp"],#rc-toggle,#rc-block').forEach(function (b) { b.disabled = !inPlayer; });
+    document.querySelectorAll('[data-cmd="prev"],[data-cmd="next"],[data-cmd="back10"],[data-cmd="fwd10"],[data-cmd="stop"],[data-cmd="speed"],[data-cmd="cc"],[data-cmd="adskip"],#rc-toggle,#rc-block').forEach(function (b) { b.disabled = !inPlayer; });
     if (inPlayer && !st.hasNext) $('[data-cmd="next"]').disabled = true;
     $('#rc-usage').textContent = !st ? '' : 'اليوم اتفرجوا ' + (st.watched || 0) + ' دقيقة' + (st.left != null ? ' · باقي ' + st.left + ' دقيقة' : ' · بدون حد يومي');
   };

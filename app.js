@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.0";
+var VERSION = "2.6.1";
 const store = {
   get(k, d) {
     try {
@@ -1833,6 +1833,28 @@ function togglePlay() {
 }
 let adMode = false, adLastT = -1, adFrozenAt = 0;
 let contentOk = false, contentTicks = 0, lastContentT = 0, playStartAt = 0, lastSeekAt = 0;
+// Our own big "skip": reload the video at the spot where the real video was (YouTube's own
+// Skip button can't be pressed from our page). The screen stays covered until the video is back.
+let adSkipAt = 0;
+function adSkip() {
+  const v = playList[playIdx];
+  if (!v || !player || Date.now() - adSkipAt < 4e3) return;
+  adSkipAt = Date.now();
+  const at = Math.floor(lastContentT || 0) || (histGet(v.id) ? Math.floor(histGet(v.id).pos || 0) : 0);
+  contentOk = false;
+  contentTicks = 0;
+  playStartAt = Date.now();
+  adForced = false;
+  try {
+    player.loadVideoById({ videoId: v.id, startSeconds: at });
+  } catch (e) {
+  }
+  const b = $("#ad-skip");
+  if (b) {
+    b.classList.add("busy");
+    setTimeout(() => b.classList.remove("busy"), 4e3);
+  }
+}
 function resetAdWatch() {
   contentOk = false;
   contentTicks = 0;
@@ -1983,6 +2005,12 @@ function setAd(on) {
   if (on) {
     hideOSD();
     spinner(false);
+    setTimeout(() => {
+      if (adMode && $("#ad-skip")) try {
+        $("#ad-skip").focus();
+      } catch (e) {
+      }
+    }, 50);
     try {
       if (player && !player.isMuted()) {
         player.mute();
@@ -2252,6 +2280,10 @@ function playerKey(code) {
   }
   if (inBreak) {
     if (isBack(code)) closePlayer();
+    return;
+  }
+  if (adMode && (code === 13 || code === 415 || code === 417)) {
+    adSkip();
     return;
   }
   if (endT) {
@@ -2819,6 +2851,9 @@ function onRemote(c) {
       break;
     case "adhelp":
       if (current === "player") forceAd();
+      break;
+    case "adskip":
+      if (current === "player" && adMode) adSkip();
       break;
     case "reloadChannels":
       lastListLoad = 0;
@@ -3774,6 +3809,10 @@ function tickClock() {
 }
 
 function onClickPlus(b, act) {
+  if (b.id === "ad-skip") {
+    adSkip();
+    return true;
+  }
   if (b.hasAttribute("data-view")) {
     setView(b.getAttribute("data-view"));
     return true;

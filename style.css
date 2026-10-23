@@ -630,3 +630,25 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 #player.ad.full .p-ad { height: 100%; z-index: 6; }
 #player.ad.full .ad-wait svg { width: 18rem; height: 18rem; }
 .ad-left { margin-top: 2.6rem; font-size: 3.4rem; font-weight: 800; color: var(--yellow); min-height: 4.4rem; }
+
+/* ---------- 2.6.1: our big Skip button + a small window on YouTube's own Skip button ---------- */
+#shield3, #ad-hole { display: none; }
+#player.ad.full .p-ad { pointer-events: auto; height: 74%; }
+#player.ad.full #shield { height: 74%; }
+#player.ad.full #shield2 { top: auto; bottom: 0; height: 9%; }
+#player.ad.full #shield3 { display: block; position: absolute; left: 0; top: 74%; width: 72%; height: 17%; z-index: 5; background: #160f3e; }
+#player.ad.full #ad-hole { display: block; position: absolute; right: 0; top: 74%; width: 28%; height: 17%; z-index: 5; pointer-events: none; border: .8rem solid var(--yellow); border-radius: 1.6rem; box-shadow: 0 0 0 .4rem rgba(255, 255, 255, .5); }
+#ad-hole span { position: absolute; bottom: 100%; right: 0; margin-bottom: 1.4rem; white-space: nowrap; font-size: 2.4rem; font-weight: 800; color: var(--white); background: rgba(31, 29, 90, .85); padding: .8rem 1.8rem .6rem; border-radius: 10rem; }
+.ad-skip-btn { display: none; align-items: center; margin: 3rem auto 0; padding: 2rem 5rem 1.8rem; border-radius: 10rem; font-size: 4.4rem; font-weight: 800; color: var(--navy); background: var(--yellow); box-shadow: 0 1rem 0 rgba(0, 0, 0, .25), 0 0 0 1rem rgba(255, 210, 63, .25); animation: pulse2 1.6s ease-in-out infinite; }
+.ad-skip-btn svg { width: 5rem; height: 5rem; margin-left: 2rem; }
+.ad-skip-btn.busy { opacity: .5; animation: none; }
+@keyframes pulse2 { 50% { transform: scale(1.06); } }
+#player.ad.full .ad-skip-btn { display: inline-flex; }
+.ad-ok { display: none; margin-top: 1.6rem; font-size: 2.4rem; color: rgba(255, 255, 255, .8); }
+#player.ad.full .ad-ok { display: block; }
+.ad-ok b { background: var(--white); color: var(--navy); padding: .2rem 1.2rem 0; border-radius: .8rem; }
+.ad-wait .ad-skip-btn svg { width: 5rem; height: 5rem; animation: none; }
+.ad-skip-btn span { font-size: 4.4rem; }
+#player.ad.full #shield, #player.ad.full #shield2, #player.ad.full #shield3 { background: #1b1449; }
+#player.ad.full { background: #1b1449; }
+#player.ad.full .ad-wait .ad-skip-btn svg { width: 5rem; height: 5rem; animation: none; }
