@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.0.0";
+var VERSION = "3.0.1";
 const store = {
   get(k, d) {
     try {
@@ -3005,7 +3005,17 @@ function useTvMode() {
   return !!(window.FARJA_NATIVE && window.FARJA_NATIVE.adblock) && settings.playerMode !== "embed" && !DEMO;
 }
 const slimV = (v) => ({ id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, parentOk: v.parentOk || void 0, ch: v.ch ? { id: v.ch.id, title: v.ch.title } : null });
+let rlogN = 0;
+function rlog(msg) {
+  if (!REMOTE_ON || rlogN++ > 15) return;
+  try {
+    fetch(NTFY + "/" + topic("log"), { method: "POST", body: "[app] " + msg }).catch(() => {
+    });
+  } catch (e) {
+  }
+}
 function launchTv(v, idx) {
+  rlog("launchTv " + v.id + " native=" + JSON.stringify(window.FARJA_NATIVE || null) + " mode=" + settings.playerMode + " ua=" + navigator.userAgent.slice(0, 120));
   const h = histGet(v.id);
   const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
   const state = {
@@ -3060,6 +3070,7 @@ function histSaveTv(v, pos, dur) {
 }
 function handleTvReturn() {
   const m = /#ret=([^&]+)/.exec(location.hash);
+  if (m) rlog("returned " + decodeURIComponent(m[1]).slice(0, 200));
   if (!m) return false;
   let r = null, st = null;
   try {
