@@ -22,7 +22,7 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.3";
+var VERSION = "2.6.4";
 const store = {
   get(k, d) {
     try {
@@ -1963,18 +1963,23 @@ function watchForAd() {
     adForced = false;
   }
   // a real ad (not just "still loading"): the clock runs on a different duration, or jumped back
-  const realAd = ps === 1 && (g.durMismatch || contentOk && lastContentT > 8 && g.t < lastContentT - 5 && Date.now() - lastSeekAt > 3e3);
+  // on the real TV a pre-roll ad keeps YouTube's state at -1 ("unstarted") while it plays
+  const stuckStart = !contentOk && (ps === -1 || ps === 5) && Date.now() - playStartAt > 4e3;
+  const realAd = ps === 1 && (g.durMismatch || contentOk && lastContentT > 8 && g.t < lastContentT - 5 && Date.now() - lastSeekAt > 3e3) || stuckStart;
   if (realAd && Date.now() - playStartAt > 1500) {
     const v0 = playList[playIdx];
     if (v0 && freshTried !== v0.id) {
       if (!adMode) setAd(true);
-      adFreshPlayer(g.durMismatch ? "dur " + Math.round(g.d) + "s" : "jump");
+      adFreshPlayer(stuckStart ? "state " + ps : g.durMismatch ? "dur " + Math.round(g.d) + "s" : "jump t=" + Math.round(g.t));
       return;
     }
     if (v0 && !adMode) adNote("ad came back in " + v0.id + " after fresh player; covering until it ends");
   }
-  if (isAd && !adMode) setAd(true);
-  else if (!isAd && adMode) {
+  if (isAd && !adMode) {
+    setAd(true);
+    adNote("cover on: state " + ps + " t=" + g.t.toFixed(1) + " d=" + Math.round(g.d) + " exp=" + g.exp + (contentOk ? "" : " (start)"));
+  } else if (!isAd && adMode) {
+    adNote("cover off: state " + ps + " t=" + g.t.toFixed(1) + " d=" + Math.round(g.d));
     setAd(false);
     if (freshTried) adNote("video back at " + Math.round(g.t) + "s");
   }
@@ -2708,6 +2713,7 @@ function statusObj() {
   const state = locked ? "locked" : current === "bedtime" ? "bedtime" : inBreak ? "break" : current === "player" ? adMode ? "ad" : pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
   return {
     v: 1,
+    ver: VERSION,
     t: Date.now(),
     state,
     screen: current,
