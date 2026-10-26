@@ -341,7 +341,7 @@
 </div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=3.2.0"></script>
+<script src="config.js?v=3.3.0"></script>
 <script>
 (function () {
   'use strict';
@@ -840,18 +840,52 @@
     }).catch(function () { if (gen === relayGen) setTimeout(function () { relayWatch(gen); }, 5000); });
   }
 
+  // Live status: a WebSocket to the device's room (the relay sleeps in between); long-poll if it can't open.
+  var stWs = null, stWsFails = 0, stWsPing = 0, stWsFailAt = 0;
+  function closeStatusSocket() {
+    clearInterval(stWsPing);
+    if (stWs) { var w = stWs; stWs = null; w.onclose = w.onerror = w.onmessage = null; try { w.close(); } catch (e) {} }
+  }
+  window.farjaLink = function () { return stWs && stWs.readyState === 1 ? 'ws' : 'poll'; };
+  function openStatusSocket(gen) {
+    closeStatusSocket();
+    if (stWsFails >= 3 && Date.now() - stWsFailAt > 10 * 60 * 1000) stWsFails = 0;
+    if (!window.WebSocket || stWsFails >= 3) { relayWatch(gen); return; }
+    var opened = false, ws;
+    try { ws = new WebSocket(RELAY.replace(/^http/, 'ws') + '/r/' + room + '/ws?role=phone'); } catch (e) { stWsFails = 3; relayWatch(gen); return; }
+    stWs = ws;
+    ws.onopen = function () { opened = true; stWsFails = 0; stWsPing = setInterval(function () { try { ws.send('ping'); } catch (e) {} }, 30000); };
+    ws.onmessage = function (ev) {
+      if (ev.data === 'pong' || gen !== relayGen) return;
+      try { var j = JSON.parse(ev.data); if (j.type === 'b' && j.key === 's' && j.data) takeStatusObj(JSON.parse(j.data)); } catch (e) {}
+    };
+    ws.onclose = function () {
+      if (stWs !== ws) return;
+      clearInterval(stWsPing); stWs = null;
+      if (gen !== relayGen || document.hidden) return;
+      if (!opened) { stWsFails = 3; stWsFailAt = Date.now(); }
+      if (stWsFails >= 3) relayWatch(gen);
+      else setTimeout(function () { if (gen === relayGen && !document.hidden) openStatusSocket(gen); }, opened ? 1000 : 3000);
+    };
+  }
+
   function startRemote() {
     renderDevbar();
     $('#all-box').classList.toggle('hidden', !allMode);
     document.body.classList.toggle('all-mode', allMode);
     $('#pair-cancel').classList.toggle('hidden', !devs.length);
-    if (allMode) { $('#pair-box').classList.add('hidden'); $('#rc').classList.add('hidden'); relayGen++; pollAll(true); return; }
+    if (allMode) { $('#pair-box').classList.add('hidden'); $('#rc').classList.add('hidden'); relayGen++; closeStatusSocket(); pollAll(true); return; }
     if (!room || pairing) { $('#pair-box').classList.remove('hidden'); $('#rc').classList.add('hidden'); return; }
     $('#pair-box').classList.add('hidden'); $('#rc').classList.remove('hidden');
     $('#rc-name').textContent = devName(room);
     renderStatus();
     lastPing = 0;
-    if (RELAY) { relayGen++; relayWatch(relayGen); ping(); return; }
+    if (RELAY) {
+      relayGen++;
+      // show the last known status right away, then live updates over the socket
+      fetch(RELAY + '/r/' + room + '/b/s?since=0&wait=0', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) { if (j && j.t && j.data) takeStatusObj(JSON.parse(j.data)); }).catch(function () {});
+      openStatusSocket(relayGen); ping(); return;
+    }
     fetch(NTFY + '/' + rtopic('s') + '/json?poll=1&since=12h').then(function (r) { return r.text(); }).then(function (txt) {
       txt.split('\n').filter(Boolean).forEach(takeStatus);
     }).catch(function () {});

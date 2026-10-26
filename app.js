@@ -25,7 +25,7 @@ var TOUCH = "ontouchstart" in window || navigator.maxTouchPoints > 0 || /[?&]tou
 if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.2.0";
+var VERSION = "3.3.0";
 var EDITION = "personal";
 const store = {
   get(k, d) {
@@ -2796,7 +2796,13 @@ function listenRemote() {
   if (RELAY) {
     sseAliveAt = Date.now();
     pollGen++;
-    pollCmds(pollGen);
+    // WebSocket first (the relay sleeps between commands); long-poll if the socket can't open
+    if (wsFails >= 3 && Date.now() - wsFailAt > 10 * 60 * 1e3) wsFails = 0;
+    if (window.WebSocket && wsFails < 3) openCmdSocket(pollGen);
+    else {
+      closeCmdSocket();
+      pollCmds(pollGen);
+    }
     return;
   }
   if (!window.EventSource) return;
@@ -3613,21 +3619,105 @@ function relayPub(key, obj) {
   return fetch(NTFY + "/" + topic(key), { method: "POST", body });
 }
 let cmdAfter = -1, pollGen = 0;
+let cmdWs = null, wsFails = 0, wsFailAt = 0, wsPingT = 0;
+function takeCmds(j) {
+  (j.cmds || []).forEach((c) => {
+    cmdAfter = Math.max(cmdAfter, c.seq);
+    let x = null;
+    try {
+      x = JSON.parse(c.data);
+    } catch (e) {
+    }
+    if (x) handleCmd(x);
+  });
+  if (typeof j.seq === "number" && cmdAfter < 0) cmdAfter = j.seq;
+}
+function closeCmdSocket() {
+  clearInterval(wsPingT);
+  if (cmdWs) {
+    const w = cmdWs;
+    cmdWs = null;
+    w.onclose = w.onerror = w.onmessage = null;
+    try {
+      w.close();
+    } catch (e) {
+    }
+  }
+}
+function openCmdSocket(gen) {
+  closeCmdSocket();
+  if (cmdAfter < 0) {
+    // learn the current command number first, so nothing sent while the socket connects is lost
+    fetch(RELAY + "/r/" + room + "/c?after=-1", { cache: "no-store" }).then((r) => r.json()).then((j) => {
+      if (typeof j.seq === "number" && cmdAfter < 0) cmdAfter = j.seq;
+    }).catch(() => {
+    }).then(() => {
+      if (gen === pollGen) openCmdSocket2(gen);
+    });
+    return;
+  }
+  openCmdSocket2(gen);
+}
+function openCmdSocket2(gen) {
+  closeCmdSocket();
+  let opened = false, ws;
+  try {
+    ws = new WebSocket(RELAY.replace(/^http/, "ws") + "/r/" + room + "/ws?role=tv&after=" + cmdAfter);
+  } catch (e) {
+    wsFails = 3;
+    wsFailAt = Date.now();
+    pollCmds(gen);
+    return;
+  }
+  cmdWs = ws;
+  ws.onopen = () => {
+    opened = true;
+    wsFails = 0;
+    sseAliveAt = Date.now();
+    wsPingT = setInterval(() => {
+      try {
+        ws.send("ping");
+      } catch (e) {
+      }
+    }, 3e4);
+  };
+  ws.onmessage = (ev) => {
+    sseAliveAt = Date.now();
+    if (ev.data === "pong" || gen !== pollGen) return;
+    let j = null;
+    try {
+      j = JSON.parse(ev.data);
+    } catch (e) {
+    }
+    if (j && j.type === "c") takeCmds(j);
+  };
+  ws.onclose = () => {
+    if (cmdWs !== ws) return;
+    clearInterval(wsPingT);
+    cmdWs = null;
+    if (gen !== pollGen) return;
+    if (!opened) {
+      // never connected (old relay or a network that blocks sockets): long-poll now, retry later
+      wsFails = 3;
+      wsFailAt = Date.now();
+    }
+    if (wsFails >= 3) pollCmds(gen);
+    else setTimeout(() => {
+      if (gen === pollGen) openCmdSocket(gen);
+    }, opened ? 1e3 : 3e3);
+  };
+}
 function pollCmds(gen) {
   if (gen !== pollGen) return;
   fetch(RELAY + "/r/" + room + "/c?after=" + cmdAfter + "&wait=20", { cache: "no-store" }).then((r) => r.json()).then((j) => {
     sseAliveAt = Date.now();
     if (gen !== pollGen) return;
-    (j.cmds || []).forEach((c) => {
-      cmdAfter = Math.max(cmdAfter, c.seq);
-      let x = null;
-      try {
-        x = JSON.parse(c.data);
-      } catch (e) {
-      }
-      if (x) handleCmd(x);
-    });
-    if (typeof j.seq === "number" && cmdAfter < 0) cmdAfter = j.seq;
+    takeCmds(j);
+    if (window.WebSocket && Date.now() - wsFailAt > 10 * 60 * 1e3) {
+      wsFails = 0;
+      openCmdSocket(gen);
+      return;
+    }
     setTimeout(() => pollCmds(gen), 250);
   }).catch(() => {
     if (gen === pollGen) setTimeout(() => pollCmds(gen), 5e3);
