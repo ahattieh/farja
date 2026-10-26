@@ -100,7 +100,7 @@
   .state.playing { background: #dcf7ec; color: #17935f; }
   .state.paused { background: #fff3c4; color: #8a6a00; }
   .state.locked, .state.timeup, .state.closed, .state.off, .state.bedtime { background: #ffe3e7; color: #d6304a; }
-  .state.break { background: #fff3c4; color: #8a6a00; }
+  .state.break, .state.prayer { background: #fff3c4; color: #8a6a00; }
   .bar { height: 6px; border-radius: 6px; background: #dfe2f7; margin-top: 8px; overflow: hidden; direction: ltr; }
   .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--coral), var(--accent)); border-radius: 6px; }
   .rc-grid { display: flex; gap: 8px; margin-top: 12px; }
@@ -166,6 +166,7 @@
     <div id="pair-box">
       <h2>تحكّم بالتلفزيون</h2>
       <p class="muted">من التلفزيون: زر «الأهل» ثم الرقم السري، وصوّر الكود بكاميرا الموبايل. أو اكتب كود الربط اللي تحت الكود:</p>
+
       <div class="row-in">
         <input id="room-in" class="inp" dir="ltr" autocomplete="off" autocapitalize="off" placeholder="xxxxx-xxxxx-xxxxx-xxxxx">
         <button id="room-btn" class="btn primary">اربط</button>
@@ -296,10 +297,11 @@
 
     <p class="foot muted">التلفزيون بيشوف التغييرات خلال دقيقة تقريباً، أو لما يرجع للصفحة الرئيسية.</p>
   </div>
+
 </div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=2.6.6"></script>
+<script src="config.js?v=3.0.0"></script>
 <script>
 (function () {
   'use strict';
@@ -323,6 +325,8 @@
   var LOADING = '<p class="msg"><span class="dots"><i></i><i></i><i></i></span></p>';
 
   /* ---------- YouTube ---------- */
+  
+  
   async function yt(path, params) {
     if (!CFG.apiKey) throw new Error('مفتاح YouTube API ناقص بملف config.js');
     var u = new URL('https://www.googleapis.com/youtube/v3/' + path);
@@ -337,6 +341,7 @@
     }
     return j;
   }
+  
   function toChannel(it) {
     var sn = it.snippet || {}, st = it.statistics || {}, th = sn.thumbnails || {};
     var rel = (it.contentDetails && it.contentDetails.relatedPlaylists) || {};
@@ -393,6 +398,7 @@
     }).catch(function () { return ''; });
   }
 
+  
   /* ---------- GitHub (channels.json) ---------- */
   var token = localStorage.getItem(TKEY) || '';
   var file = { sha: null, data: { channels: [] } };
@@ -680,6 +686,8 @@
     } catch (err) { b.disabled = false; toast(err.message); }
   });
 
+  
+  
   /* ---------- TV remote (ntfy.sh relay, or our own relay if config.js has one) ---------- */
   var NTFY = (CFG.ntfy || 'https://ntfy.sh').replace(/\/$/, '');
   var RELAY = String(CFG.relay || '').replace(/\/$/, '');
@@ -716,7 +724,7 @@
     if (m < 60) return 'قبل ' + m + ' د'; var h = Math.round(m / 60); if (h < 24) return 'قبل ' + h + ' س'; var d = Math.round(h / 24); return d < 2 ? 'مبارح' : d < 30 ? 'قبل ' + d + ' يوم' : 'قبل ' + Math.round(d / 30) + ' شهر';
   }
   function fmt(t) { t = Math.max(0, Math.floor(t)); var m = Math.floor(t / 60), x = t % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
-  var LABEL = { wait: 'عم نسأل التلفزيون…', quota: 'خلص حد الخدمة لليوم', ad: 'إعلان', playing: 'عم يشتغل', paused: 'موقّف مؤقتاً', loading: 'عم يحمّل', browsing: 'عم يتصفح القوائم', timeup: 'خلص وقت اليوم', locked: 'مقفول', closed: 'التطبيق مسكّر', off: 'ما في اتصال', bedtime: 'وقت النوم (برّا المواعيد)', break: 'استراحة للعيون' };
+  var LABEL = { wait: 'عم نسأل التلفزيون…', quota: 'خلص حد الخدمة لليوم', ad: 'إعلان', playing: 'عم يشتغل', paused: 'موقّف مؤقتاً', loading: 'عم يحمّل', browsing: 'عم يتصفح القوائم', timeup: 'خلص وقت اليوم', locked: 'مقفول', closed: 'التطبيق مسكّر', off: 'ما في اتصال', bedtime: 'وقت النوم (برّا المواعيد)', break: 'استراحة للعيون', prayer: 'وقت الصلاة' };
 
   var renderStatus = function () {
     // Online = the TV answered our last ping, or told us something in the last few minutes.
@@ -786,6 +794,7 @@
 
   $('#rc-refresh').addEventListener('click', function () { lastPing = 0; startRemote(); });
   $('#room-btn').addEventListener('click', function () {
+    
     var r = cleanRoom($('#room-in').value);
     if (r.length < 16) { toast('الكود ناقص، تأكد منه'); return; }
     localStorage.setItem(RKEY, r); room = r; startRemote();
@@ -983,7 +992,10 @@
   setInterval(function () { if (!document.hidden && room && Date.now() - lastPing > 3 * 60 * 1000) ping(); }, 30000);
   startRemote();
 
+  
   if (token && REPO) showMain(); else logout();
+  
+  
 })();
 </script>
 </body>

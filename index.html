@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.6.6">
+<link rel="stylesheet" href="style.css?v=3.0.0">
 </head>
 <body>
 
@@ -98,7 +98,6 @@
   <div id="ad-frame"></div>
   <div id="shield3" class="shield-x"></div>
   <div id="ad-hole"></div>
-  <pre id="dbg" class="dbg hidden" dir="ltr"></pre>
   <div id="p-ad" class="p-ad hidden">
     <div class="ad-wait">
       <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="10" width="56" height="46" rx="14" fill="var(--yellow)"/><path d="M4 24 Q18 22 22 10 L4 10Z" fill="var(--coral)"/><path d="M60 24 Q46 22 42 10 L60 10Z" fill="var(--coral)"/><path d="M27 26 L42 35 L27 44Z" fill="var(--navy)"/></svg>
@@ -110,9 +109,11 @@
     </div>
     <p class="ad-skip-hint">زر «تخطي» بيطلع جوا الإطار الأصفر. اضغطه بمؤشر الريموت</p>
   </div>
+  <pre id="dbg" class="dbg hidden" dir="ltr"></pre>
   <div id="p-spin" class="p-spin"><span class="dots"><i></i><i></i><i></i></span></div>
   <div id="p-flash" class="p-flash"></div>
   <div id="p-seek" class="p-seek"></div>
+  
   <div id="osd" class="osd">
     <div class="osd-title"><span id="osd-fav" class="osd-fav">❤</span><span id="osd-title"></span></div>
     <div class="osd-bar" dir="ltr">
@@ -193,6 +194,16 @@
     <h1 id="bt-title"></h1>
     <p id="bt-msg" class="muted"></p>
     <div class="tu-btns"><button class="f btn" data-act="bt-parent">فتح ساعة (للأهل)</button></div>
+  </div>
+</section>
+
+<!-- ============ PRAYER ============ -->
+<section id="prayer" class="screen">
+  <div class="tu-wrap">
+    <svg class="tu-moon pr-icon" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6c-2 6-14 10-14 22h28C46 16 34 12 32 6z" fill="var(--yellow)"/><rect x="14" y="28" width="36" height="28" rx="3" fill="var(--yellow)"/><path d="M27 56V44a5 5 0 0 1 10 0v12z" fill="var(--navy)"/><rect x="6" y="20" width="5" height="36" rx="2" fill="var(--yellow)"/><rect x="53" y="20" width="5" height="36" rx="2" fill="var(--yellow)"/><path d="M8.5 12l2.5 8h-5zM55.5 12l2.5 8h-5z" fill="var(--yellow)"/><path d="M36 8a5 5 0 1 0 0 0.1" fill="none"/></svg>
+    <h1 id="pr-title"></h1>
+    <p id="pr-msg" class="muted"></p>
+    <div class="tu-btns"><button class="f btn" data-act="pr-parent">فتح الفرجة (للأهل)</button></div>
   </div>
 </section>
 
@@ -302,8 +313,19 @@
       </div>
 
       <div class="card">
+        <h2>أوقات الصلاة</h2>
+        <p class="muted">وقت الأذان بتوقف الفرجة وبتطلع شاشة «حان وقت الصلاة»، وقبلها بـ5 دقايق في تنبيه. الأوقات بتنحسب على التلفزيون نفسه (تقويم أم القرى).</p>
+        <button class="f tog" id="pr-tog"><span>وقفة الصلاة</span><i class="sw"></i></button>
+        <button class="f tog val" id="pr-city-btn"><span>المدينة</span><b id="pr-city"></b></button>
+        <button class="f tog val" id="pr-dur-btn"><span>مدة الوقفة</span><b id="pr-dur"></b></button>
+        <button class="f tog" id="pr-fajr-btn"><span>حتى صلاة الفجر</span><i class="sw" id="pr-fajr"></i></button>
+        <p id="pr-times" class="pr-times"></p>
+      </div>
+
+      <div class="card">
         <h2>صحة وعادات</h2>
         <button class="f tog val" id="adc-btn"><span>وقت الإعلان</span><b id="adc-val"></b></button>
+        <button class="f tog val" id="calm-btn"><span>وقت الهدوء قبل النوم (بس قصص وقرآن)</span><b id="calm-val"></b></button>
         <button class="f tog val" id="eb-btn"><span>استراحة للعيون (دقيقة)</span><b id="eb-val"></b></button>
         <button class="f tog" data-k="reward"><span>مكافأة: كل 10 دقايق قرآن أو تعليمي = 5 دقايق زيادة (لحد 30 دقيقة باليوم)</span><i class="sw"></i></button>
         <p class="muted" style="margin-top:1.4rem">التصنيف (قرآن، تعليمي…) بتختاره لكل قناة من قائمة القنوات فوق أو من الموبايل.</p>
@@ -323,7 +345,7 @@
 <div id="warn" class="warn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="var(--yellow)"/><path d="M12 9v4l3 2" stroke="var(--navy)" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M5 4l3 2M19 4l-3 2" stroke="var(--yellow)" stroke-width="2.4" stroke-linecap="round"/></svg><p id="warn-text"></p></div>
 <div id="remote-msg" class="remote-msg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="var(--yellow)"/></svg><p id="remote-msg-text"></p></div>
 
-<script src="config.js?v=2.6.6"></script>
-<script src="app.js?v=2.6.6"></script>
+<script src="config.js?v=3.0.0"></script>
+<script src="app.js?v=3.0.0"></script>
 </body>
 </html>

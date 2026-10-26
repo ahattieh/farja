@@ -22,7 +22,8 @@ var __async = (__this, __arguments, generator) => {
 var CFG = window.FARJA_CONFIG || {};
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "2.6.6";
+var VERSION = "3.0.0";
+var EDITION = "personal";
 const store = {
   get(k, d) {
     try {
@@ -254,6 +255,7 @@ const realApi = {
     });
   }
 };
+
 const DEMO_CH = [
   ["حكايات قبل النوم", 262],
   ["أناشيد الحروف", 32],
@@ -383,6 +385,7 @@ function parseRemote(j) {
   return list;
 }
 function fetchRemoteList() {
+  
   return __async(this, null, function* () {
     if (DEMO) {
       takeRemoteExtra({ channels: DEMO_CH.map((c, i) => ({ id: "UCdemo" + i, cat: ["quran", "learn", "stories", "songs", "fun"][i % 5] })), picks: [{ id: "UCdemo2-v4", title: "اختيار بابا: قصة قبل النوم", ch: "UCdemo2", chTitle: DEMO_CH[2][0], thumb: demoThumb(140, 4), dur: 320 }, { id: "PICKext1", title: "فيديو من برّا القنوات بعته بابا", ch: "UCother", chTitle: "قناة ثانية", thumb: demoThumb(20, 9), dur: 200 }], blocked: [] });
@@ -563,7 +566,10 @@ let current = null;
 const lastFocus = {};
 function show(name) {
   if (locked && name !== "locked" && name !== "pin") name = "locked";
-  else if (!locked && name !== "bedtime" && name !== "pin" && name !== "settings" && name !== "locked" && !schedAllowed()) {
+  else if (!locked && name !== "prayer" && name !== "bedtime" && name !== "pin" && name !== "settings" && name !== "locked" && prayerBlocking()) {
+    name = "prayer";
+    renderPrayerScreen(prayerBlocking());
+  } else if (!locked && name !== "bedtime" && name !== "prayer" && name !== "pin" && name !== "settings" && name !== "locked" && !schedAllowed()) {
     name = "bedtime";
     renderBedtime();
   }
@@ -750,7 +756,7 @@ function renderHome() {
   if (!heroEl || !document.body.contains(heroEl)) heroDefault();
   renderRail();
   const notice = $("#notice");
-  if (!DEMO && !CFG.apiKey) {
+  if (!DEMO && !CFG.apiKey && !CFG.api) {
     notice.innerHTML = 'التطبيق محتاج مفتاح <b dir="ltr">YouTube Data API</b> حتى يجيب الفيديوهات. ضيفه بملف <b dir="ltr">config.js</b> (الخطوات بملف README).';
     notice.classList.remove("hidden");
   } else if (channelsError && !channels.length) {
@@ -1407,6 +1413,7 @@ function ensurePlayer() {
   }
   playerReady = loadYTApi().then(() => new Promise((resolve) => {
     player = new window.YT.Player("yt", {
+      
       width: "100%",
       height: "100%",
       playerVars: {
@@ -1563,6 +1570,10 @@ function playAt(idx) {
   }
   if (!schedAllowed()) {
     goBedtime();
+    return;
+  }
+  if (prayerBlocking()) {
+    goPrayer(prayerBlocking());
     return;
   }
   if (isBlocked(v.id)) {
@@ -2523,13 +2534,15 @@ function renderSettings() {
   ).join("");
   renderSchedSettings();
   renderCatSettings();
+  renderPrayerSettings();
+  $("#calm-val").textContent = settings.calm ? "آخر " + settings.calm + " دقيقة" : "مطفي";
   $("#eb-val").textContent = settings.eyeBreak ? "كل " + settings.eyeBreak + " دقيقة" : "مطفي";
   $("#adc-val").textContent = settings.adCover === "skip" ? "خلّي زر التخطي ظاهر" : "غطّي كل الشاشة";
   renderKidChans();
   $("#restore-btn").classList.toggle("hidden", !removedIds().length);
   $$(".tog[data-k]").forEach((t) => t.classList.toggle("on", !!settings[t.getAttribute("data-k")]));
   renderTimeSettings();
-  $("#set-foot").innerHTML = "نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · مفتاح YouTube: " + (CFG.apiKey || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
+  $("#set-foot").innerHTML = "نسخة " + VERSION + (DEMO ? " · وضع التجربة" : "") + " · الاتصال: " + (CFG.apiKey || CFG.api || DEMO ? '<span style="color:var(--teal)">مضبوط</span>' : '<span style="color:var(--coral)">ناقص</span>');
 }
 function renderTimeSettings() {
   const u = getUsage();
@@ -2654,6 +2667,7 @@ function goBack() {
       if (pin.cancel) pin.cancel();
       break;
     case "bedtime":
+    case "prayer":
       break;
     case "kids":
       show("home");
@@ -2711,7 +2725,7 @@ function statusObj() {
   } catch (e) {
   }
   const u = getUsage();
-  const state = locked ? "locked" : current === "bedtime" ? "bedtime" : inBreak ? "break" : current === "player" ? adMode ? "ad" : pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
+  const state = locked ? "locked" : current === "bedtime" ? "bedtime" : current === "prayer" ? "prayer" : inBreak ? "break" : current === "player" ? adMode ? "ad" : pState === 1 ? "playing" : pState === 2 ? "paused" : "loading" : current === "timeup" ? "timeup" : "browsing";
   return {
     v: 1,
     ver: VERSION,
@@ -2728,7 +2742,9 @@ function statusObj() {
     hasNext: !!(v && playList[playIdx + 1]),
     catOff: settings.catOff || [],
     cats: CATS.filter((cc) => allChannels.some((x) => catOf(x.id) === cc.k)).map((cc) => cc.k),
-    chans: allChannels.slice(0, 40).map((c) => [c.id, c.title.slice(0, 40), c.uploads]),
+    chans: allChannels.slice(0, 60).map((c) => [c.id, c.title.slice(0, 40), c.uploads, catOf(c.id), c.thumb || ""]),
+    picks: (remoteExtra.picks || []).slice(0, 20).map((p) => [p.id, String(p.title || "").slice(0, 60)]),
+    blocked: store.get("blockedLocal", []).slice(-30).map((b) => [b.id, String(b.title || "").slice(0, 60)]),
     recent: (typeof hist !== "undefined" ? hist : []).slice(0, 8).map((h) => ({ title: h.title, ch: h.ch && h.ch.title, at: h.seen || h.at, thumb: h.thumb }))
   };
 }
@@ -2987,7 +3003,9 @@ function loadQrLib() {
   });
   return qrLib;
 }
+
 function renderPairing() {
+  
   const link = remoteLink();
   $("#pair-code").textContent = room.slice(0, 5) + "-" + room.slice(5, 10) + "-" + room.slice(10, 15) + "-" + room.slice(15);
   $("#pair-off").classList.toggle("hidden", REMOTE_ON);
@@ -3208,7 +3226,8 @@ function kidHidden(k) {
 function applyKidFilter() {
   const h = kidHidden();
   const off = settings.catOff || [];
-  channels = allChannels.filter((c) => h.indexOf(c.id) < 0 && off.indexOf(catOf(c.id)) < 0);
+  const calm = typeof calmActive === "function" && calmActive();
+  channels = allChannels.filter((c) => h.indexOf(c.id) < 0 && off.indexOf(catOf(c.id)) < 0 && (!calm || CALM_CATS.indexOf(catOf(c.id)) >= 0));
 }
 function setCatOff(list) {
   settings.catOff = (list || []).filter((k) => CATS.some((c) => c.k === k));
@@ -3231,6 +3250,7 @@ function renderCatSettings() {
 const YT_CAT = { "27": "learn", "28": "learn", "26": "learn", "10": "songs", "1": "stories", "24": "fun", "23": "fun", "20": "fun", "15": "fun", "17": "fun", "19": "fun", "22": "fun" };
 function guessCat(ch) {
   if (/قرآن|القرآن|القران|قران|quran|qur'?an|تلاوة|تجويد/i.test(ch.title || "")) return Promise.resolve("quran");
+  
   if (DEMO || !CFG.apiKey || !ch.uploads) return Promise.resolve("");
   return yt("playlistItems", { part: "contentDetails", playlistId: ch.uploads, maxResults: 12 }).then((j) => {
     const ids = (j.items || []).map((i) => i.contentDetails && i.contentDetails.videoId).filter(Boolean);
@@ -3608,8 +3628,73 @@ function handleCmd(c) {
   if (c.t && Math.abs(Date.now() - c.t) > 2 * 60 * 1e3) return;
   onRemote(c);
 }
+// Channel / picks management from the parents' phone through the relay (the TV keeps the list).
+function cleanChannel(ch) {
+  if (!ch || !/^UC[\w-]{22}$/.test(ch.id || "")) return null;
+  return {
+    id: ch.id,
+    title: String(ch.title || "").slice(0, 100),
+    thumb: /^https:\/\//.test(ch.thumb || "") ? String(ch.thumb).slice(0, 400) : "",
+    uploads: /^UU[\w-]{22}$/.test(ch.uploads || "") ? ch.uploads : "UU" + ch.id.slice(2)
+  };
+}
+function setCatLocal(id, k) {
+  const l = store.get("catLocal", {});
+  l[id] = CATS.some((x) => x.k === k) ? k : "";
+  store.set("catLocal", l);
+}
+function addChannelLocal(raw, cat) {
+  const ch = cleanChannel(raw);
+  if (!ch) return;
+  store.set("channels", tvChannels().filter((c) => c.id !== ch.id).concat([ch]));
+  store.set("removed", removedIds().filter((id) => id !== ch.id));
+  rebuildChannelsLocal();
+  if (typeof cat === "string") setCatLocal(ch.id, cat);
+  else if (!catOf(ch.id)) guessCat(ch).then((k) => {
+    if (!k) return;
+    setCatLocal(ch.id, k);
+    applyKidFilter();
+    remoteNotify(true);
+  });
+  applyKidFilter();
+  lastListLoad = 0;
+  refreshChannelsSoon();
+  if (current === "settings") renderSettings();
+  showRemoteMsg("قناة جديدة: " + ch.title);
+}
+function cleanPick(v) {
+  if (!v || !/^[\w-]{11}$/.test(v.id || "")) return null;
+  return { id: v.id, title: String(v.title || "").slice(0, 120), thumb: /^https:\/\//.test(v.thumb || "") ? v.thumb : "", ch: /^UC[\w-]{22}$/.test(v.ch || "") ? v.ch : "", chTitle: String(v.chTitle || "").slice(0, 80), dur: +v.dur || 0, at: Date.now() };
+}
 function onRemoteExtra(c) {
   switch (c.cmd) {
+    case "addChannel":
+      addChannelLocal(c.ch, c.cat);
+      return true;
+    case "removeChannel":
+      if (c.ch && allChannels.some((x) => x.id === c.ch)) removeChannel(String(c.ch));
+      return true;
+    case "setCat":
+      if (c.ch) {
+        setCatLocal(String(c.ch), c.cat);
+        applyKidFilter();
+        if (current === "home") rerenderHomeKeepFocus();
+      }
+      return true;
+    case "addPick": {
+      const p = cleanPick(c.v);
+      if (!p) return true;
+      remoteExtra.picks = [p].concat((remoteExtra.picks || []).filter((x) => x.id !== p.id)).slice(0, 40);
+      store.set("remoteExtra", remoteExtra);
+      if (current === "home") rerenderHomeKeepFocus();
+      showRemoteMsg("ماما وبابا اختاروا: " + p.title);
+      return true;
+    }
+    case "removePick":
+      remoteExtra.picks = (remoteExtra.picks || []).filter((x) => x.id !== c.vid);
+      store.set("remoteExtra", remoteExtra);
+      if (current === "home") rerenderHomeKeepFocus();
+      return true;
     case "report":
       relayPub("r", buildReport(c.days)).catch(() => {
       });
@@ -3864,6 +3949,166 @@ function tickClock() {
   if (el) el.textContent = pad2(d.getHours() % 12 || 12) + ":" + pad2(d.getMinutes());
 }
 
+
+/* ---------- prayer times: pause the TV at each adhan (computed on the TV, no internet needed) ---------- */
+// [name, lat, lng, method]  method "uq" = Umm al-Qura (Fajr 18.5°, Isha 90 min after Maghrib), "mwl" = Fajr 18°, Isha 17°
+const PR_CITIES = [["الرياض", 24.7136, 46.6753, "uq"], ["بريدة", 26.326, 43.975, "uq"], ["عنيزة", 26.0843, 43.9935, "uq"], ["جدة", 21.4858, 39.1925, "uq"], ["مكة المكرمة", 21.3891, 39.8579, "uq"], ["المدينة المنورة", 24.5247, 39.5692, "uq"], ["الدمام", 26.4207, 50.0888, "uq"], ["أبها", 18.2164, 42.5053, "uq"], ["تبوك", 28.3835, 36.5662, "uq"], ["عمّان", 31.9539, 35.9106, "mwl"], ["دبي", 25.2048, 55.2708, "mwl"], ["الكويت", 29.3759, 47.9774, "mwl"]];
+const PR_NAMES = { fajr: "الفجر", dhuhr: "الظهر", asr: "العصر", maghrib: "المغرب", isha: "العشاء" };
+const PR_DURS = [10, 15, 20, 30];
+const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
+const fixA = (a) => (a % 360 + 360) % 360, fixH = (h) => (h % 24 + 24) % 24;
+function prSettings() {
+  if (!settings.prayer) settings.prayer = { on: false, city: 1, dur: 15, fajr: false };
+  return settings.prayer;
+}
+function julian(y, m, d) {
+  if (m <= 2) {
+    y -= 1;
+    m += 12;
+  }
+  const A = Math.floor(y / 100), B = 2 - A + Math.floor(A / 4);
+  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+}
+function sunPosition(jd) {
+  const D = jd - 2451545;
+  const g = fixA(357.529 + 0.98560028 * D);
+  const q = fixA(280.459 + 0.98564736 * D);
+  const L = fixA(q + 1.915 * Math.sin(rad(g)) + 0.02 * Math.sin(rad(2 * g)));
+  const e = 23.439 - 3.6e-7 * D;
+  const RA = fixH(deg(Math.atan2(Math.cos(rad(e)) * Math.sin(rad(L)), Math.cos(rad(L)))) / 15);
+  let eqt = q / 15 - RA;
+  eqt = eqt > 12 ? eqt - 24 : eqt < -12 ? eqt + 24 : eqt;
+  return { decl: deg(Math.asin(Math.sin(rad(e)) * Math.sin(rad(L)))), eqt };
+}
+// Prayer times for a date, in minutes after local midnight (uses the TV's own time zone).
+function prayerTimes(date, city) {
+  const c = PR_CITIES[city] || PR_CITIES[0];
+  const lat = c[1], lng = c[2];
+  const tz = -date.getTimezoneOffset() / 60;
+  const jd = julian(date.getFullYear(), date.getMonth() + 1, date.getDate()) - lng / 360;
+  const sp = sunPosition(jd + 0.5);
+  const noon = 12 + tz - lng / 15 - sp.eqt;
+  const T = (alt) => deg(Math.acos((Math.sin(rad(alt)) - Math.sin(rad(lat)) * Math.sin(rad(sp.decl))) / (Math.cos(rad(lat)) * Math.cos(rad(sp.decl))))) / 15;
+  const asrAlt = deg(Math.atan(1 / (1 + Math.tan(rad(Math.abs(lat - sp.decl))))));
+  const maghrib = noon + T(-0.833);
+  const h = {
+    fajr: noon - T(c[3] === "uq" ? -18.5 : -18),
+    sunrise: noon - T(-0.833),
+    dhuhr: noon + 2 / 60,
+    asr: noon + T(asrAlt),
+    maghrib,
+    isha: c[3] === "uq" ? maghrib + 1.5 : noon + T(-17)
+  };
+  const out = {};
+  Object.keys(h).forEach((k) => out[k] = k === "sunrise" ? Math.floor(h[k] * 60) : Math.ceil(h[k] * 60));
+  return out;
+}
+function prayerState() {
+  const ps = prSettings();
+  if (!ps.on) return null;
+  const d = new Date();
+  const nowM = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+  const t = prayerTimes(d, ps.city);
+  let current = null, next = null;
+  ["fajr", "dhuhr", "asr", "maghrib", "isha"].forEach((k) => {
+    if (k === "fajr" && !ps.fajr) return;
+    if (nowM >= t[k] && nowM < t[k] + ps.dur) current = { k, start: t[k], end: t[k] + ps.dur };
+    if (!next && t[k] > nowM) next = { k, at: t[k] };
+  });
+  return { current, next, nowM, times: t };
+}
+function prayerBlocking() {
+  const st = prayerState();
+  if (!st || !st.current) return null;
+  const ov = store.get("prayerOverride", "");
+  return ov === todayStr() + ":" + st.current.k ? null : st.current;
+}
+function renderPrayerScreen(cur) {
+  $("#pr-title").textContent = "حان وقت صلاة " + PR_NAMES[cur.k];
+  const d = new Date();
+  const left = Math.max(1, Math.ceil(cur.end - (d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)));
+  $("#pr-msg").textContent = "يلا نتوضّى ونصلّي. الفرجة بترجع بعد " + left + " دقيقة";
+}
+function goPrayer(cur) {
+  if (current === "player") {
+    try {
+      histSave(true);
+      player.pauseVideo();
+      player.stopVideo();
+    } catch (e) {
+    }
+    clearInterval(tickT);
+    clearInterval(guardT);
+    curVid = null;
+    hideOSD();
+    clearEnd();
+    endBreak(false);
+  }
+  renderPrayerScreen(cur);
+  show("prayer");
+  focusEl($('[data-act="pr-parent"]'));
+}
+function prayerTick() {
+  const st = prayerState();
+  if (!st) {
+    if (current === "prayer") {
+      show("home");
+      renderHome();
+      focusHome(true);
+    }
+    return;
+  }
+  if (st.next && st.next.at - st.nowM <= 5 && st.next.at - st.nowM > 4.9) {
+    const key = todayStr() + ":" + st.next.k;
+    if (store.get("prayerWarn", "") !== key) {
+      store.set("prayerWarn", key);
+      showWarn("باقي 5 دقايق على أذان " + PR_NAMES[st.next.k], "soft");
+    }
+  }
+  const cur = prayerBlocking();
+  if (cur && current !== "prayer" && current !== "pin" && current !== "settings" && !locked) goPrayer(cur);
+  else if (cur && current === "prayer") renderPrayerScreen(cur);
+  else if (!cur && current === "prayer") {
+    show("home");
+    renderHome();
+    focusHome(true);
+    toast("تقبّل الله! يلا نكمّل");
+  }
+}
+function fmtM(m) {
+  m = Math.round(m);
+  return fmtClock(m).replace(/ (الصبح|الظهر|المسا)$/, "");
+}
+function renderPrayerSettings() {
+  const ps = prSettings();
+  $("#pr-tog").classList.toggle("on", !!ps.on);
+  $("#pr-city").textContent = (PR_CITIES[ps.city] || PR_CITIES[0])[0];
+  $("#pr-dur").textContent = ps.dur + " دقيقة";
+  $("#pr-fajr").classList.toggle("on", !!ps.fajr);
+  const t = prayerTimes(new Date(), ps.city);
+  $("#pr-times").innerHTML = ["fajr", "dhuhr", "asr", "maghrib", "isha"].map((k) => "<span><b>" + PR_NAMES[k] + "</b> " + fmtM(t[k]) + "</span>").join("");
+}
+
+/* ---------- calm time: the last minutes before bedtime show only stories and Quran ---------- */
+const CALM_OPTS = [0, 30, 45, 60];
+const CALM_CATS = ["stories", "quran"];
+let calmWas = false;
+function calmActive() {
+  const m = settings.calm || 0;
+  if (!m || !sched().on || schedOverride()) return false;
+  const left = schedLeftSec();
+  return left > 0 && left <= m * 60 && allChannels.some((c) => CALM_CATS.indexOf(catOf(c.id)) >= 0);
+}
+function calmTick() {
+  const on = calmActive();
+  if (on === calmWas) return;
+  calmWas = on;
+  applyKidFilter();
+  enforceChannels();
+  if (current === "home") rerenderHomeKeepFocus();
+  if (on) showWarn("وقت الهدوء قبل النوم: بس قصص وقرآن", "soft");
+}
+
 function onClickPlus(b, act) {
   if (b.id === "ad-skip") {
     adSkip();
@@ -3913,6 +4158,52 @@ function onClickPlus(b, act) {
     setCatOff(off);
     renderCatSettings();
     focusEl($('[data-catoff="' + k + '"]'));
+    return true;
+  }
+  if (b.id === "pr-tog" || b.id === "pr-fajr-btn") {
+    const ps = prSettings();
+    if (b.id === "pr-tog") ps.on = !ps.on;
+    else ps.fajr = !ps.fajr;
+    saveSettings();
+    renderPrayerSettings();
+    return true;
+  }
+  if (b.id === "pr-city-btn") {
+    const ps = prSettings();
+    ps.city = (ps.city + 1) % PR_CITIES.length;
+    saveSettings();
+    renderPrayerSettings();
+    return true;
+  }
+  if (b.id === "pr-dur-btn") {
+    const ps = prSettings();
+    ps.dur = PR_DURS[(PR_DURS.indexOf(ps.dur) + 1) % PR_DURS.length];
+    saveSettings();
+    renderPrayerSettings();
+    return true;
+  }
+  if (b.id === "calm-btn") {
+    settings.calm = CALM_OPTS[(CALM_OPTS.indexOf(settings.calm || 0) + 1) % CALM_OPTS.length];
+    saveSettings();
+    $("#calm-val").textContent = settings.calm ? "آخر " + settings.calm + " دقيقة" : "مطفي";
+    calmTick();
+    return true;
+  }
+  if (act === "pr-parent") {
+    const cur = prayerBlocking();
+    openPin({ done: () => {
+      if (cur) store.set("prayerOverride", todayStr() + ":" + cur.k);
+      show("home");
+      renderHome();
+      focusHome(true);
+    }, cancel: () => {
+      const c2 = prayerBlocking();
+      if (c2) goPrayer(c2);
+      else {
+        show("home");
+        focusHome(true);
+      }
+    } });
     return true;
   }
   if (b.id === "sched-tog") {
@@ -3967,7 +4258,7 @@ function onKey(e) {
     playerKey(code);
     return;
   }
-  if (current === "locked" || current === "bedtime") {
+  if (current === "locked" || current === "bedtime" || current === "prayer") {
     e.preventDefault();
     if (code === 13 && t && t.classList.contains("f")) t.click();
     else if (code >= 37 && code <= 40) moveFocus({ 37: "left", 38: "up", 39: "right", 40: "down" }[code]);
@@ -4309,6 +4600,10 @@ function init() {
     }
   }, 3e4);
   setInterval(warnTick, 1e3);
+  setInterval(() => {
+    prayerTick();
+    calmTick();
+  }, 5e3);
   tickClock();
   setInterval(tickClock, 15e3);
   let wheelAt = 0;
@@ -4345,7 +4640,7 @@ function init() {
   show("home");
   start();
   if (locked) setLocked(true, lockMsg);
-  if (!DEMO && CFG.apiKey) loadYTApi().catch(() => {
+  if (!DEMO && (CFG.apiKey || CFG.api)) loadYTApi().catch(() => {
   });
 }
 function start() {
