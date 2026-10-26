@@ -20,9 +20,12 @@ var __async = (__this, __arguments, generator) => {
   });
 };
 var CFG = window.FARJA_CONFIG || {};
+// Tablets and phones: no remote, the kids tap and swipe. Rows and pages scroll natively then.
+var TOUCH = "ontouchstart" in window || navigator.maxTouchPoints > 0 || /[?&]touch\b/.test(location.search);
+if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.0.0";
+var VERSION = "3.1.0";
 var EDITION = "personal";
 const store = {
   get(k, d) {
@@ -575,6 +578,12 @@ function show(name) {
   }
   $$(".screen").forEach((s) => s.classList.toggle("active", s.id === name));
   current = name;
+  if (TOUCH && name !== "home" && !(history.state && history.state.farja)) {
+    try {
+      history.pushState({ farja: 1 }, "");
+    } catch (e) {
+    }
+  }
   remoteNotify();
 }
 function isVisible(el) {
@@ -595,6 +604,7 @@ function focusEl(el) {
 }
 let remPx = 10;
 function slideRow(el) {
+  if (TOUCH) return;
   const track = el.closest(".hrow-track");
   if (!track) return;
   const item = el.parentNode === track ? el : el.closest(".hrow-track > *");
@@ -610,6 +620,7 @@ function slideRow(el) {
   track.style.webkitTransform = "translateX(" + tx + "px)";
 }
 function ensureVisible(el) {
+  if (TOUCH) return;
   slideRow(el);
   if (el.closest && el.closest("#home-rows")) {
     homeScrollTo(el);
@@ -3806,6 +3817,7 @@ function setView(v) {
   heroEl = null;
   renderHome();
   $("#home-rows").style.transform = "";
+  if (TOUCH) $("#home-scroll").scrollTop = 0;
   const first = $("#home-rows .f");
   if (first) focusEl(first);
   else focusEl($('#rail-items [data-view="' + v + '"]'));
@@ -4600,6 +4612,16 @@ function init() {
     }
   }, 3e4);
   setInterval(warnTick, 1e3);
+  window.addEventListener("popstate", () => {
+    if (!TOUCH || current === "home") return;
+    goBack();
+    if (current !== "home") {
+      try {
+        history.pushState({ farja: 1 }, "");
+      } catch (e) {
+      }
+    }
+  });
   setInterval(() => {
     prayerTick();
     calmTick();
