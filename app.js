@@ -25,7 +25,7 @@ var TOUCH = "ontouchstart" in window || navigator.maxTouchPoints > 0 || /[?&]tou
 if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.1.0";
+var VERSION = "3.2.0";
 var EDITION = "personal";
 const store = {
   get(k, d) {
