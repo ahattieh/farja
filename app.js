@@ -21,11 +21,13 @@ var __async = (__this, __arguments, generator) => {
 };
 var CFG = window.FARJA_CONFIG || {};
 // Tablets and phones: no remote, the kids tap and swipe. Rows and pages scroll natively then.
-var TOUCH = "ontouchstart" in window || navigator.maxTouchPoints > 0 || /[?&]touch\b/.test(location.search);
+// TVs (LG webOS, Android TV) always use the remote, even if the browser reports touch events.
+var IS_TV = !!window.PalmSystem || /Web0S|webOS|NetCast|SmartTV|FarjaTV|AFT|BRAVIA|GoogleTV/i.test(navigator.userAgent);
+var TOUCH = /[?&]touch\b/.test(location.search) || !IS_TV && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
 if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.3.0";
+var VERSION = "3.3.1";
 var EDITION = "personal";
 const store = {
   get(k, d) {
