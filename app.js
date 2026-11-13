@@ -27,7 +27,7 @@ var TOUCH = /[?&]touch\b/.test(location.search) || !IS_TV && ("ontouchstart" in 
 if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.4.0";
+var VERSION = "3.5.0";
 var EDITION = "personal";
 const store = {
   get(k, d) {
@@ -771,7 +771,7 @@ function buildFeed(max, only) {
 function videoCard(v, row, i, big) {
   const chName = (row === "feed" || row === "search" || row === "cont" || row === "favs" || row === "picks" || /^cat:/.test(row)) && v.ch ? esc(v.ch.title) : "";
   const meta = (row === "cont" ? [chName, "باقي " + fmtTime(Math.max(0, v.dur - v.pos))] : [viewsText(v.views), ageText(v.at), chName]).filter(Boolean).join(" · ");
-  return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(row !== "cont" && v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "").concat(row === "cont" && v.dur ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(v.pos / v.dur * 100)) + '%"></i></span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
+  return '<button class="f v'.concat(big ? " big" : "", v.favLocked ? " lk" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(row !== "cont" && v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "").concat(row === "cont" && v.dur ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(v.pos / v.dur * 100)) + '%"></i></span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
 }
 function skelCards(n, big) {
   let s = "";
@@ -830,9 +830,9 @@ function renderHome() {
   } else {
     html += rowHTML("الجديد من قنواتكم", skelCards(4, true));
   }
-  const fv = favs.filter((f) => channelAllowed(f.ch && f.ch.id));
+  const fv = favList();
   if (fv.length) {
-    rowLists.favs = fv.map((f) => Object.assign({}, f, { ch: channels.find((c) => f.ch && c.id === f.ch.id) || f.ch }));
+    rowLists.favs = fv;
     html += rowHTML("مفضلتي ❤", rowLists.favs.map((v, i) => videoCard(v, "favs", i, false)).join(""));
   }
   const chBubble = (c, row) => '<button class="f ch" data-id="'.concat(esc(c.id), '" data-key="').concat(row, ":").concat(esc(c.id), '"><span class="av"><img src="').concat(esc(c.thumb), '" alt="">').concat(isFavCh(c.id) ? '<i class="ch-heart">❤</i>' : "", '</span><span class="nm">').concat(esc(c.title), "</span></button>");
@@ -1330,7 +1330,9 @@ let histTick = 0;
 let capApplied = false;
 function slimVideo(v) {
   const ch = v.ch || chs && chs.ch || null;
-  return { id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, views: v.views != null ? v.views : null, ch: ch ? { id: ch.id, title: ch.title } : null };
+  const o = { id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, views: v.views != null ? v.views : null, ch: ch ? { id: ch.id, title: ch.title } : null };
+  if (v.parentOk) o.ok = 1;
+  return o;
 }
 function histGet(id) {
   return hist.find((h) => h.id === id);
@@ -1381,6 +1383,19 @@ function videoChannelId(v) {
 }
 function continueList() {
   return hist.filter((h) => channelAllowed(h.ch && h.ch.id) && h.pos > 20 && (!h.dur || h.pos < h.dur - 20)).slice(0, 12);
+}
+// Favorites the kid can see. A favorite stays listed while its channel is only switched off for now
+// (calm time, a closed section, this kid's list) and opens again when the channel does; favorites of a
+// channel the parents removed for good, or of a blocked video, are not shown.
+function favList() {
+  return favs.filter((f) => !isBlocked(f.id)).map((f) => {
+    const id = f.ch && f.ch.id;
+    const ch = id && (channels.find((c) => c.id === id) || allChannels.find((c) => c.id === id));
+    if (channelAllowed(id)) return Object.assign({}, f, { ch: ch || f.ch, favLocked: false });
+    if (f.ok) return Object.assign({}, f, { parentOk: true, favLocked: false });
+    if (ch) return Object.assign({}, f, { ch, favLocked: true });
+    return null;
+  }).filter(Boolean);
 }
 function isFav(id) {
   return favs.some((f) => f.id === id);
@@ -1610,6 +1625,10 @@ function playAt(idx) {
   }
   if (isBlocked(v.id)) {
     toast("هالفيديو مش مسموح");
+    return;
+  }
+  if (v.favLocked && !channelAllowed(videoChannelId(v))) {
+    toast("هالقناة مسكّرة هلّق، بتقدر تتفرج عليه بعدين 🔒");
     return;
   }
   if (!v.parentOk && !channelAllowed(videoChannelId(v))) {
@@ -2043,6 +2062,11 @@ function watchForAd() {
     const txt = left > 0 && left < 400 ? "الفيديو راجع بعد " + left + " ثانية" : "";
     const el = $("#ad-left");
     if (el && el.textContent !== txt) el.textContent = txt;
+    const bar = $("#ad-bar");
+    if (bar) {
+      bar.parentNode.style.visibility = left > 0 && left < 400 ? "visible" : "hidden";
+      bar.style.width = left > 0 && g.d > 0 ? Math.min(100, Math.max(0, g.t / g.d * 100)).toFixed(1) + "%" : "0";
+    }
   }
   if (dbgOn) renderDebug(g, ps);
 }
@@ -3942,8 +3966,8 @@ function renderHomeView() {
       rowLists.cont = cont.map((h) => Object.assign({}, h, { ch: channels.find((c) => h.ch && c.id === h.ch.id) || h.ch }));
       html.push(rowHTML("كمّل المشاهدة", rowLists.cont.map((v, i) => videoCard(v, "cont", i, false)).join("")));
     }
-    const fv = favs.filter((f) => channelAllowed(f.ch && f.ch.id) && !isBlocked(f.id));
-    rowLists.favs = fv.map((f) => Object.assign({}, f, { ch: channels.find((c) => f.ch && c.id === f.ch.id) || f.ch }));
+    const fv = favList();
+    rowLists.favs = fv;
     if (fv.length) html.push(rowHTML("مفضلتي ❤", rowLists.favs.map((v, i) => videoCard(v, "favs", i, true)).join("")));
     const fc = channels.filter((c) => isFavCh(c.id));
     if (fc.length) html.push(rowHTML("قنواتي المفضلة", fc.map((c) => chBubble2(c, "fch")).join(""), "chans"));

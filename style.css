@@ -691,3 +691,34 @@ html.touch .pbtn { min-width: 12rem; min-height: 12rem; }
 
 .osd-meta { font-size: 2.4rem; font-weight: 600; color: rgba(255, 255, 255, .8); margin-bottom: 2.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .osd-meta:empty { margin-bottom: 2rem; }
+
+/* a favorite whose channel is switched off for now */
+.v.lk .th img { filter: grayscale(1) brightness(.55); }
+.v.lk .th::after { content: "🔒"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 5rem; }
+
+/* ---------- 3.5: calmer ad screen. One quiet waiting card; the skip window is a small corner card ---------- */
+#player.ad, #player.ad #shield, #player.ad #shield2, #player.ad.full #shield, #player.ad.full #shield2 { background: #171240; }
+.p-ad, #player.ad.full .p-ad { height: 100%; }
+.ad-wait svg, #player.ad.full .ad-wait svg { width: 9rem; height: 9rem; animation: none; opacity: .95; }
+.ad-wait h2 { font-size: 4.4rem; font-weight: 800; margin: 2.4rem 0 2.8rem; text-shadow: none; }
+.ad-wait .dots { display: none; }
+.ad-bar { width: 44rem; height: .8rem; margin: 0 auto; border-radius: 1rem; background: rgba(255, 255, 255, .16); overflow: hidden; direction: ltr; visibility: hidden; }
+.ad-bar i { display: block; width: 0; height: 100%; border-radius: 1rem; background: var(--yellow); transition: width .5s linear; }
+.ad-left { margin-top: 1.4rem; font-size: 2.6rem; font-weight: 600; color: rgba(255, 255, 255, .72); min-height: 3.6rem; }
+.ad-skip-btn { margin: 2.6rem auto 0; padding: 1.3rem 3.6rem 1.1rem; font-size: 3rem; font-weight: 800; color: var(--white); background: rgba(255, 255, 255, .12); box-shadow: inset 0 0 0 .3rem rgba(255, 255, 255, .3); animation: none; }
+.ad-skip-btn span { font-size: 3rem; }
+.ad-skip-btn svg, .ad-wait .ad-skip-btn svg, #player.ad.full .ad-wait .ad-skip-btn svg { width: 3rem; height: 3rem; margin: 0 1.2rem 0 0; animation: none; opacity: 1; transform: scaleX(-1); }
+.ad-skip-btn:focus { color: var(--navy); background: var(--yellow); box-shadow: 0 0 0 .6rem rgba(255, 210, 63, .25); outline: none; }
+/* skip window: YouTube's own corner, shown as a small card at the bottom-left... of the frame's right corner */
+#player.ad #yt-wrap { left: -62%; top: -63%; width: 160%; height: 160%; }
+#player.ad.full #yt-wrap { left: 0; top: 0; width: 100%; height: 100%; }
+#player.ad #shield { height: 69%; }
+#player.ad #shield2 { width: 65%; height: 31%; }
+#player.ad.full #shield { height: 100%; }
+#ad-frame { left: 66%; top: 70%; width: 31%; height: 26%; border: .4rem solid rgba(255, 255, 255, .85); border-radius: 2rem; box-shadow: 0 0 0 6rem #171240; }
+#player.ad #ad-frame { animation: none; }
+.ad-skip-hint { position: absolute; left: 66%; right: auto; top: auto; bottom: 31.5%; width: 31%; margin: 0; padding: 0; background: none; border-radius: 0; text-align: center; font-size: 2.6rem; font-weight: 700; line-height: 1.4; color: var(--white); }
+.ad-skip-hint span { display: inline-block; padding: .9rem 2.4rem .7rem; border-radius: 10rem; background: var(--yellow); color: var(--navy); font-size: 2.6rem; font-weight: 800; }
+.ad-skip-hint i { display: block; width: 0; height: 0; margin: .2rem auto 0; border: 1.2rem solid transparent; border-top-color: var(--yellow); border-bottom: 0; }
+#player.ad .ad-skip-btn { display: inline-flex; visibility: hidden; }
+#player.ad.full .ad-skip-btn { visibility: visible; }
