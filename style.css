@@ -194,7 +194,7 @@ kbd { font-family: inherit; font-size: .85em; font-weight: 800; display: inline-
 .p-seek.rew { left: 12rem; }
 .osd { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; padding: 14rem 9.6rem 5.2rem; background: linear-gradient(to top, rgba(31, 29, 90, .95) 0%, rgba(31, 29, 90, .6) 55%, transparent 100%); opacity: 0; transform: translateY(2rem); transition: opacity .3s ease, transform .3s ease; }
 .osd.on { opacity: 1; transform: none; }
-.osd-title { font-size: 4rem; font-weight: 800; line-height: 1.25; margin-bottom: 2.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.osd-title { font-size: 4rem; font-weight: 800; line-height: 1.25; margin-bottom: .6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .osd-bar { display: flex; align-items: center; font-size: 2.6rem; font-weight: 800; }
 .osd-bar .track { position: relative; -webkit-box-flex: 1; flex: 1; height: 1.8rem; border-radius: 1rem; background: rgba(255, 255, 255, .25); margin: 0 2.8rem; }
 .osd-bar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 1rem; background: linear-gradient(90deg, var(--coral), var(--yellow)); }
@@ -688,3 +688,6 @@ html.touch .pbtn { min-width: 12rem; min-height: 12rem; }
   html.touch .rotate p { font-size: 7vw; font-weight: 800; margin-top: 4vw; }
 }
 @keyframes tilt { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+
+.osd-meta { font-size: 2.4rem; font-weight: 600; color: rgba(255, 255, 255, .8); margin-bottom: 2.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.osd-meta:empty { margin-bottom: 2rem; }

@@ -27,7 +27,7 @@ var TOUCH = /[?&]touch\b/.test(location.search) || !IS_TV && ("ontouchstart" in 
 if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.3.1";
+var VERSION = "3.4.0";
 var EDITION = "personal";
 const store = {
   get(k, d) {
@@ -234,7 +234,7 @@ const realApi = {
       const pl = yield yt("playlistItems", { part: "contentDetails", playlistId, maxResults: 50, pageToken });
       const ids = (pl.items || []).map((i) => i.contentDetails && i.contentDetails.videoId).filter(Boolean);
       if (!ids.length) return { videos: [], next: pl.nextPageToken || null };
-      const vj = yield yt("videos", { part: "snippet,contentDetails,status", id: ids.join(","), maxResults: 50 });
+      const vj = yield yt("videos", { part: "snippet,contentDetails,status,statistics", id: ids.join(","), maxResults: 50 });
       const byId = {};
       (vj.items || []).forEach((v) => {
         byId[v.id] = v;
@@ -253,7 +253,8 @@ const realApi = {
           title: sn.title || "",
           thumb: pickThumb(sn.thumbnails, ["high", "medium", "standard", "default"]),
           dur: parseISODur(v.contentDetails && v.contentDetails.duration),
-          at: Date.parse(sn.publishedAt) || 0
+          at: Date.parse(sn.publishedAt) || 0,
+          views: v.statistics && v.statistics.viewCount != null ? +v.statistics.viewCount : null
         });
       });
       return { videos, next: pl.nextPageToken || null };
@@ -349,7 +350,8 @@ const demoApi = {
           title: DEMO_TITLES[n % DEMO_TITLES.length] + (n >= DEMO_TITLES.length ? " (" + (Math.floor(n / DEMO_TITLES.length) + 1) + ")" : ""),
           thumb: demoThumb(hue, n),
           dur: n % 5 === 3 ? 45 : 25 + n * 97 % 600,
-          at: Date.now() - (n * 2 + hue % 7) * 36e5 * 9
+          at: Date.now() - (n * 2 + hue % 7) * 36e5 * 9,
+          views: Math.round(Math.pow(10, 3 + (hue * 7 + n * 13) % 40 / 10))
         });
       }
       return { videos, next: page < 2 ? String(page + 1) : null };
@@ -688,6 +690,22 @@ const EMPTY_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="14
 const feedData = {};
 let feedLoading = false;
 let rowLists = {};
+function viewsText(n) {
+  if (n == null || isNaN(n)) return "";
+  n = +n;
+  const fmt = (x) => (x >= 10 ? Math.round(x) : Math.round(x * 10) / 10).toString();
+  if (n >= 1e9) return fmt(n / 1e9) + " مليار مشاهدة";
+  if (n >= 1e6) return fmt(n / 1e6) + " مليون مشاهدة";
+  if (n >= 1e3) return fmt(n / 1e3) + " ألف مشاهدة";
+  if (n === 1) return "مشاهدة وحدة";
+  return n + " مشاهدة";
+}
+const AR_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+function dateText(t) {
+  if (!t) return "";
+  const d = new Date(t);
+  return d.getDate() + " " + AR_MONTHS[d.getMonth()] + " " + d.getFullYear();
+}
 function ageText(t) {
   if (!t) return "";
   const d = Math.floor((Date.now() - t) / 864e5);
@@ -751,7 +769,8 @@ function buildFeed(max, only) {
   return out;
 }
 function videoCard(v, row, i, big) {
-  const meta = [(row === "feed" || row === "search" || row === "cont" || row === "favs" || row === "picks" || /^cat:/.test(row)) && v.ch ? esc(v.ch.title) : "", row === "cont" ? "باقي " + fmtTime(Math.max(0, v.dur - v.pos)) : ageText(v.at)].filter(Boolean).join(" · ");
+  const chName = (row === "feed" || row === "search" || row === "cont" || row === "favs" || row === "picks" || /^cat:/.test(row)) && v.ch ? esc(v.ch.title) : "";
+  const meta = (row === "cont" ? [chName, "باقي " + fmtTime(Math.max(0, v.dur - v.pos))] : [viewsText(v.views), ageText(v.at), chName]).filter(Boolean).join(" · ");
   return '<button class="f v'.concat(big ? " big" : "", '" data-row="').concat(esc(row), '" data-i="').concat(i, '" data-key="').concat(esc(row + ":" + v.id), '"><span class="th"><img src="').concat(esc(v.thumb), '" alt="">').concat(v.dur ? '<span class="dur">' + fmtTime(v.dur) + "</span>" : "").concat(row !== "cont" && v.at && Date.now() - v.at < 3 * 864e5 ? '<span class="new">جديد</span>' : "").concat(row === "cont" && v.dur ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(v.pos / v.dur * 100)) + '%"></i></span>' : "", '</span><span class="tt">').concat(esc(v.title), "</span>").concat(meta ? '<span class="meta">' + meta + "</span>" : "", "</button>");
 }
 function skelCards(n, big) {
@@ -1311,7 +1330,7 @@ let histTick = 0;
 let capApplied = false;
 function slimVideo(v) {
   const ch = v.ch || chs && chs.ch || null;
-  return { id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, ch: ch ? { id: ch.id, title: ch.title } : null };
+  return { id: v.id, title: v.title, thumb: v.thumb, dur: v.dur || 0, at: v.at || 0, views: v.views != null ? v.views : null, ch: ch ? { id: ch.id, title: ch.title } : null };
 }
 function histGet(id) {
   return hist.find((h) => h.id === id);
@@ -1607,13 +1626,14 @@ function playAt(idx) {
   clearEnd();
   hideErr();
   $("#osd-title").textContent = v.title;
+  $("#osd-meta").textContent = [v.ch && v.ch.title, viewsText(v.views), dateText(v.at)].filter(Boolean).join("  ·  ");
   updateFavBadge();
   updateOSD(0, v.dur);
   spinner(true);
   if (current !== "player") show("player");
   $("#shield").focus();
   showOSD(4e3);
-  ensurePlayer().then((p) => {
+  const load = () => ensurePlayer().then((p) => {
     if (curVid !== v.id || current !== "player") return;
     const h = histGet(v.id);
     const resume = h && h.pos > 20 && (!h.dur || h.pos < h.dur - 20) ? Math.floor(h.pos) : 0;
@@ -1622,6 +1642,16 @@ function playAt(idx) {
       toast("كمّلنا من " + fmtTime(resume));
     } else p.loadVideoById(v.id);
   }).catch((e) => showErr(errText(e), false));
+  const owed = breakPendingSec();
+  if (owed > 0) {
+    // the break isn't over yet: finish it first, then the video starts by itself
+    try {
+      if (player) player.stopVideo();
+    } catch (e) {
+    }
+    pendingLoad = load;
+    startBreak(owed);
+  } else load();
   startTimers();
 }
 function startTimers() {
@@ -3484,7 +3514,14 @@ function warnTick() {
 /* ---------- eye break ---------- */
 const BREAK_OPTS = [0, 15, 20, 30];
 const BREAK_LEN = 60;
-let contWatch = 0, lastWatchAt = 0, breakT = null, breakLeft = 0, inBreak = false;
+let contWatch = 0, lastWatchAt = 0, breakT = null, breakLeft = 0, inBreak = false, pendingLoad = null;
+// The break has a deadline: leaving the player, reopening a video or restarting the app doesn't skip it.
+let breakUntil = +store.get("breakUntil", 0) || 0;
+function breakPendingSec() {
+  if (!settings.eyeBreak || !breakUntil) return 0;
+  const s = Math.ceil((breakUntil - Date.now()) / 1e3);
+  return s > 0 ? Math.min(s, BREAK_LEN) : 0;
+}
 const BREAK_TIPS = ["طلّع على شي بعيد من الشباك", "غمّض عيونك وعدّ لـ 10", "قوم تمطّع وارفع إيديك لفوق", "رمّش 10 مرات بسرعة", "اشرب شوية مي"];
 function breakTick(dt) {
   if (!settings.eyeBreak) return;
@@ -3493,16 +3530,20 @@ function breakTick(dt) {
   contWatch += dt;
   if (!inBreak && contWatch >= settings.eyeBreak * 60) startBreak();
 }
-function startBreak() {
+function startBreak(sec) {
+  sec = sec || BREAK_LEN;
   inBreak = true;
   contWatch = 0;
+  breakUntil = Date.now() + sec * 1e3;
+  store.set("breakUntil", breakUntil);
   wePaused = true;
   try {
     player.pauseVideo();
   } catch (e) {
   }
   hideOSD();
-  breakLeft = BREAK_LEN;
+  spinner(false);
+  breakLeft = sec;
   $("#p-break").classList.remove("hidden");
   let tip = 0;
   const paint = () => {
@@ -3513,18 +3554,29 @@ function startBreak() {
   paint();
   clearInterval(breakT);
   breakT = setInterval(() => {
-    breakLeft--;
+    breakLeft = Math.max(0, Math.ceil((breakUntil - Date.now()) / 1e3));
     paint();
     if (breakLeft <= 0) endBreak(true);
   }, 1e3);
   remoteNotify();
 }
 function endBreak(resume) {
+  if (!resume) pendingLoad = null;
   if (!inBreak) return;
   inBreak = false;
   clearInterval(breakT);
   $("#p-break").classList.add("hidden");
-  if (resume && current === "player" && player) {
+  if (resume) {
+    breakUntil = 0;
+    store.set("breakUntil", 0);
+  }
+  if (resume && current === "player" && pendingLoad) {
+    const f = pendingLoad;
+    pendingLoad = null;
+    wePaused = false;
+    f();
+    toast("برافو! يلا نتفرّج");
+  } else if (resume && current === "player" && player) {
     wePaused = false;
     try {
       player.playVideo();
