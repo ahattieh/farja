@@ -27,7 +27,7 @@ var TOUCH = /[?&]touch\b/.test(location.search) || !IS_TV && ("ontouchstart" in 
 if (TOUCH) document.documentElement.classList.add("touch");
 var QS = new URLSearchParams(location.search);
 var DEMO = QS.has("demo");
-var VERSION = "3.5.0";
+var VERSION = "3.6.0";
 var EDITION = "personal";
 const store = {
   get(k, d) {
@@ -2059,13 +2059,16 @@ function watchForAd() {
   }
   if (adMode) {
     const left = g.durMismatch && g.d > g.t ? Math.ceil(g.d - g.t) : 0;
-    const txt = left > 0 && left < 400 ? "الفيديو راجع بعد " + left + " ثانية" : "";
-    const el = $("#ad-left");
-    if (el && el.textContent !== txt) el.textContent = txt;
-    const bar = $("#ad-bar");
-    if (bar) {
-      bar.parentNode.style.visibility = left > 0 && left < 400 ? "visible" : "hidden";
-      bar.style.width = left > 0 && g.d > 0 ? Math.min(100, Math.max(0, g.t / g.d * 100)).toFixed(1) + "%" : "0";
+    const known = left > 0 && left < 400;
+    const heart = $("#ad-heart");
+    if (heart) {
+      heart.classList.toggle("nonum", !known);
+      const num = $("#ad-num");
+      const t = known ? String(left) : "";
+      if (num.textContent !== t) num.textContent = t;
+      // the heart fills up as the video gets closer
+      const done = known && g.d > 0 ? Math.min(1, Math.max(0, g.t / g.d)) : 0;
+      $("#ad-fill").setAttribute("y", String(Math.round(230 - done * 220)));
     }
   }
   if (dbgOn) renderDebug(g, ps);
@@ -2150,7 +2153,6 @@ function setAd(on) {
     } catch (e) {
     }
   } else if (adMuted) {
-    $("#ad-left").textContent = "";
     adMuted = false;
     try {
       player.unMute();

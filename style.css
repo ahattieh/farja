@@ -722,3 +722,27 @@ html.touch .pbtn { min-width: 12rem; min-height: 12rem; }
 .ad-skip-hint i { display: block; width: 0; height: 0; margin: .2rem auto 0; border: 1.2rem solid transparent; border-top-color: var(--yellow); border-bottom: 0; }
 #player.ad .ad-skip-btn { display: inline-flex; visibility: hidden; }
 #player.ad.full .ad-skip-btn { visibility: visible; }
+
+/* ---------- 3.6: the girls' ad screen. A heart fills up while the video comes back ---------- */
+#player.ad, #player.ad #shield, #player.ad #shield2, #player.ad.full #shield, #player.ad.full #shield2 { background: #FFE4EF; }
+.ad-deco { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+#player.ad:not(.full) .ad-deco-r { display: none; }
+.ad-wait { position: relative; color: #4A154B; }
+.ad-heart { position: relative; width: 36rem; height: 33.2rem; margin: 0 auto; }
+.ad-heart svg, .ad-wait .ad-heart svg, #player.ad.full .ad-wait .ad-heart svg { display: block; width: 36rem; height: 33.2rem; animation: none; opacity: 1; }
+.ad-heart.nonum svg { animation: pulse2 1.6s ease-in-out infinite; }
+.ad-num { position: absolute; left: 0; right: 0; top: 6rem; text-align: center; }
+.ad-num b { display: block; font-size: 12.4rem; font-weight: 800; line-height: 1; color: #4A154B; }
+.ad-num span { display: block; font-size: 3.2rem; font-weight: 700; color: #4A154B; }
+.ad-heart.nonum .ad-num { display: none; }
+.ad-wait h2 { font-size: 6.6rem; margin: 2rem 0 0; color: #4A154B; }
+.ad-left { margin-top: .4rem; font-size: 3.4rem; font-weight: 600; color: #7A3B78; min-height: 0; }
+.ad-skip-btn { margin-top: 3rem; padding: 1.6rem 4.4rem 1.4rem; color: #4A154B; background: #FFFFFF; box-shadow: 0 0 0 .4rem #C9A0F5; }
+.ad-skip-btn span { font-size: 3.8rem; }
+.ad-skip-btn:focus { color: #FFFFFF; background: #8B3FD9; box-shadow: 0 0 0 .9rem rgba(139, 63, 217, .22); }
+#ad-frame { border: .7rem solid #FFFFFF; border-radius: 3.6rem; box-shadow: 0 0 0 .6rem #FF8FB8, 0 0 0 6rem #FFE4EF; }
+.ad-skip-hint span { background: #8B3FD9; color: #FFFFFF; font-size: 3rem; padding: 1rem 3rem .8rem; }
+.ad-skip-hint i { border-top-color: #8B3FD9; }
+.ad-skip-hint { bottom: 32.5%; }
+.ad-num b, .p-ad .ad-num b { background: none; padding: 0; margin: 0; border-radius: 0; }
+.p-ad .ad-num span { font-size: 3.2rem; line-height: 1.2; }
